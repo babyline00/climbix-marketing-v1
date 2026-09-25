@@ -1,0 +1,584 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model Lead {
+  id              String      @id @default(cuid())
+  name            String?
+  email           String   @unique
+  company         String?
+  website         String?
+  phone           String?
+  whatsapp        String?
+  country         String?
+  city            String?
+  service         String?
+  goal            String?
+  message         String?
+  source          String?     // homepage-cta, service-cta, free-audit, etc.
+  campaign        String?
+  utmSource       String?
+  utmMedium       String?
+  utmCampaign     String?
+  utmTerm         String?
+  utmContent      String?
+  tags            String?     // comma-separated
+  estimatedValue  Float?
+  expectedCloseAt DateTime?
+  assignedTo      String?     // staff display name / email
+  auditScore      Int?
+  auditData       String?     // JSON string of full audit results
+  leadScore       Int?         // auto-calculated qualification score (0-100)
+  leadTier        String?      // auto-calculated: HOT, WARM, COLD
+  status          LeadStatus  @default(NEW)
+  action          LeadAction? // current action label
+  actionNote      String?
+  actionAt        DateTime?
+  clientId        String?
+  client          Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  followUps       FollowUp[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  meetings        Meeting[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([assignedTo])
+  @@index([clientId])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  CONVERTED
+  LOST
+  FOLLOW_UP
+  IN_PROGRESS
+  CLOSED
+  ARCHIVED
+}
+
+enum LeadAction {
+  MADE_CALL
+  NO_RESPONSE
+  CLOSED
+  REMINDER
+  FOLLOW_UP
+}
+
+model Meeting {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  name        String
+  email       String
+  company     String?
+  service     String?
+  date        String   // ISO date string (yyyy-MM-dd)
+  time        String   // HH:mm
+  timezone    String   @default("UTC")
+  notes       String?
+  status      String   @default("scheduled") // scheduled, completed, cancelled
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Site content stored as key-value pairs for the admin content editor
+model SiteContent {
+  key       String   @id // e.g. "hero.headline", "contact.email"
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Media library — uploaded images and videos
+model Media {
+  id         String   @id @default(cuid())
+  filename   String   // original filename
+  storedName String   // unique stored filename
+  url        String   // /uploads/<storedName>
+  mimeType   String   // image/png, video/mp4, etc.
+  size       Int      // bytes
+  altText    String?
+  title      String?
+  type       String   // "image" | "video" | "document"
+  createdAt  DateTime @default(now())
+}
+
+// Pages — dynamic pages that can be created/edited/deleted
+model Page {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique // URL slug
+  content     String   // JSON string of page sections
+  status      String   @default("published") // published, draft
+  template    String   @default("standard") // standard, landing, about
+  schemaJson  String?  // Schema.org JSON-LD (single JSON string)
+  parentId    String?  // for sub-pages
+  parent      Page?    @relation("PageHierarchy", fields: [parentId], references: [id])
+  children    Page[]   @relation("PageHierarchy")
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// URL redirects — 301/302 rules managed from the admin panel
+model Redirect {
+  id          String   @id @default(cuid())
+  source      String   @unique // source path e.g. /old-page or /old-page?x=1
+  destination String   // target URL (absolute or path)
+  statusCode  Int      @default(301) // 301 permanent, 302 temporary
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Blog posts — dynamic blog articles
+model BlogPost {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String    @unique
+  excerpt     String
+  content     String    // JSON string of article sections
+  category    String?
+  tags        String?   // comma-separated
+  author      String    @default("Climbix Team")
+  heroImage   String?   // media URL or gradient class
+  readTime    String    @default("5 min read")
+  status      String    @default("published") // published, draft
+  featured    Boolean   @default(false)
+  publishedAt DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Categories — for blog posts and pages
+model Category {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String     @unique
+  type      String     @default("blog") // blog, page, industry, service
+  parentId  String?    // for subcategories
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+  order     Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+// Email log — stores all emails sent by the system
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String   // recipient email
+  from      String   @default("noreply@climbixmarketing.com")
+  subject   String
+  body      String   // HTML body
+  type      String   // meeting_confirmation, lead_notification, etc.
+  status    String   @default("sent") // sent, failed
+  leadId    String?
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────
+// Homepage CMS — admin-managed homepage content & section order
+// ─────────────────────────────────────────────────────────────
+
+// Trust badges — small credibility strip items (e.g. "Google Partner")
+model TrustBadge {
+  id        String   @id @default(cuid())
+  label     String
+  icon      String   @default("shield-check") // lucide icon key
+  imageUrl  String?  // optional uploaded partner / certification mark
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// Client logos — logo marquee / grid on the homepage
+model ClientLogo {
+  id        String   @id @default(cuid())
+  name      String
+  imageUrl  String?  // optional logo image URL (from media library)
+  website   String?
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// Client reviews / testimonials
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?
+  company   String?
+  quote     String
+  rating    Int      @default(5) // 1-5 stars
+  avatarUrl String?
+  isActive  Boolean  @default(true)
+  featured  Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// Marketing offers / promotions (e.g. "Free SEO Audit — Limited Time")
+model Offer {
+  id          String    @id @default(cuid())
+  title       String
+  description String
+  badge       String?   // e.g. "LIMITED TIME", "FREE"
+  imageUrl    String?   // optional uploaded offer artwork
+  ctaLabel    String    @default("Claim Offer")
+  ctaHref     String    @default("#strategy-call")
+  expiresAt   DateTime? // optional expiry — hidden automatically after this date
+  isActive    Boolean   @default(true)
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([isActive, position])
+}
+
+// Homepage section manager — visibility toggle + position ordering
+model HomePageSection {
+  id        String   @id @default(cuid())
+  key       String   @unique // hero, trust-badges, services, offers, ...
+  label     String   // admin display name
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+// Homepage section content — editable text/items per section (JSON blob)
+model SectionContent {
+  key       String   @id // matches HomePageSection.key
+  data      String   @default("{}") // JSON string of editable fields
+  updatedAt DateTime @updatedAt
+}
+
+// Services — the service catalog shown on the homepage grid, /services
+// overview and individual service pages. Seed rows mirror the static
+// defaults in src/data/services.ts; admin edits are stored here and
+// deep-merged over the defaults when rendering.
+model Service {
+  id         String   @id @default(cuid())
+  slug       String   @unique // URL slug: /services/<slug>
+  name       String
+  shortName  String
+  tagline    String   @default("")
+  icon       String   @default("search") // lucide icon key (SERVICE_ICONS)
+  accent     String   @default("from-brand-500/20 to-brand-700/10")
+  border     String   @default("border-brand-500/30")
+  cardDesc   String   @default("") // grid card description
+  cardPoints String   @default("[]") // JSON array of grid card bullet strings
+  data       String   @default("{}") // JSON: hero, problem, framework, subServices, process, results, faq, finalCta
+  isActive   Boolean  @default(true)
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Header CMS — admin-managed navigation & announcement popup
+// ─────────────────────────────────────────────────────────────
+
+// Header navigation links — reorder, activate/deactivate, custom entries
+model HeaderLink {
+  id        String   @id @default(cuid())
+  label     String   // display label
+  href      String   @default("#") // anchor or external URL (kind "link")
+  kind      String   @default("link") // link | services | industries | blog | pricing
+  isSystem  Boolean  @default(false) // seeded structural links cannot be deleted
+  isActive  Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, position])
+}
+
+// Announcement popup — single editable record shown to visitors
+model SitePopup {
+  id            String   @id @default(cuid())
+  title         String   @default("Special Offer")
+  message       String   @default("")
+  badge         String?  // small pill above the title, e.g. "LIMITED TIME"
+  ctaLabel      String?
+  ctaHref       String?
+  imageUrl      String?
+  customHtml    String?  // rendered in a sandboxed iframe on public pages
+  isActive      Boolean  @default(false)
+  delaySeconds  Int      @default(5) // auto-show delay after page load
+  showEveryDays Int      @default(1) // per-visitor re-show interval (dismiss memory)
+  updatedAt     DateTime @updatedAt
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Workflow automation — visual event-driven CRM automations
+// ─────────────────────────────────────────────────────────────
+
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String   @default("lead.created")
+  nodes       String   @default("[]") // JSON array of visual nodes
+  edges       String   @default("[]") // JSON array of node connections
+  isActive    Boolean  @default(true)
+  version     Int      @default(1)
+  lastRunAt   DateTime?
+  createdBy   String?
+  webhookSecret String? @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  runs WorkflowRun[]
+
+  @@index([isActive, trigger])
+  @@index([updatedAt])
+}
+
+model WorkflowRun {
+  id          String    @id @default(cuid())
+  workflowId  String
+  workflow    Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  trigger     String
+  triggerId   String?
+  leadId      String?
+  status      String    @default("running") // running|completed|failed|skipped
+  logs        String    @default("[]")
+  error       String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([workflowId, startedAt])
+  @@index([leadId, startedAt])
+  @@index([status, startedAt])
+  @@index([startedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Access control — users, roles & audit trail (Super Admin RBAC)
+// ─────────────────────────────────────────────────────────────
+
+// Admin panel users — each belongs to a role (Role.name)
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String    // scrypt hash "salt:hex"
+  role         String    @default("STAFF") // Role.name
+  phone        String?
+  isActive     Boolean   @default(true)
+  sessionVersion Int      @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+}
+
+// Roles — system roles are seeded; custom roles can be created by Super Admin
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // SUPER_ADMIN, ADMIN, SALES_MANAGER, ...
+  label       String
+  description String   @default("")
+  permissions String   @default("[]") // JSON array of permission keys
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isSystem])
+}
+
+// Activity log — audit trail of auth events & content mutations
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String   @default("system")
+  action    String   // login, login_failed, lead.update, page.create, ...
+  module    String   @default("system") // auth, leads, content, homepage, ...
+  details   String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([module])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Business modules — clients, projects, tasks, follow-ups
+// ─────────────────────────────────────────────────────────────
+
+// Clients — companies the agency works with
+model Client {
+  id        String    @id @default(cuid())
+  name      String
+  company   String?
+  email     String?
+  phone     String?
+  whatsapp  String?
+  website   String?
+  industry  String?
+  country   String?
+  city      String?
+  address   String?
+  status    String    @default("active") // active | inactive | archived
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  projects Project[]
+  leads    Lead[]
+
+  @@index([status])
+  @@index([name])
+}
+
+// Projects — client engagements
+model Project {
+  id            String    @id @default(cuid())
+  name          String
+  code          String?   @unique
+  description   String?
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  managerName   String?   // display name of responsible staff
+  status        String    @default("planning") // planning|pending|active|on_hold|completed|cancelled|archived
+  priority      String    @default("medium") // low|medium|high|critical
+  progress      Int       @default(0) // 0-100
+  budget        Float?
+  actualCost    Float?
+  revenue       Float?
+  startDate     DateTime?
+  deadline      DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tasks Task[]
+
+  @@index([status])
+  @@index([clientId])
+}
+
+// Tasks — project work items
+model Task {
+  id             String    @id @default(cuid())
+  projectId      String?
+  project        Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  assigneeName   String?
+  status         String    @default("todo") // todo|in_progress|review|completed|cancelled
+  priority       String    @default("medium") // low|medium|high|critical
+  dueDate        DateTime?
+  estimatedHours Float?
+  actualHours    Float?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([projectId])
+}
+
+// Follow-ups — scheduled lead follow-up activities
+model FollowUp {
+  id          String    @id @default(cuid())
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  staffName   String?
+  type        String    @default("call") // call|whatsapp|email|meeting|sms|other
+  scheduledAt DateTime
+  notes       String?
+  result      String?
+  nextAt      DateTime?
+  done        Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([scheduledAt])
+  @@index([leadId])
+  @@index([done])
+}
+
+// Notifications — in-app notification center
+model Notification {
+  id        String    @id @default(cuid())
+  type      String    @default("system") // lead_new|lead_assigned|lead_converted|followup_due|task|system
+  title     String
+  message   String?
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([readAt])
+  @@index([createdAt])
+}
+
+// Documents — file attachments linked to projects, clients, leads or staff
+model Document {
+  id          String    @id @default(cuid())
+  name        String
+  storedName  String    @unique
+  url         String
+  mimeType    String
+  size        Int       // bytes
+  category    String    @default("general") // general|contract|proposal|invoice|report|design|other
+  uploadedBy  String    @default("system") // display name of uploading user
+  relatedType String?   // project|client|lead|staff
+  relatedId   String?
+  relatedName String?   // denormalized label for quick display
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([category])
+  @@index([relatedType])
+  @@index([relatedId])
+  @@index([createdAt])
+}
+
+// Settings — key/value application configuration (general, branding, security, email, seo)
+model Setting {
+  key       String   @id // e.g. "general.appName", "security.maxLoginAttempts"
+  value     String   @default("") // JSON or plain string
+  updatedAt DateTime @updatedAt
+}
+
+// Password reset tokens — single-use, expire after 1 hour
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+}

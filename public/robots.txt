@@ -1,0 +1,16 @@
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /download/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /download/
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /download/
+
+Sitemap: https://climbixmarketing.com/sitemap.xml
