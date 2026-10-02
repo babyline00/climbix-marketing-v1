@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "description": "k6 load-test configuration for climbixmarketing.com. BASE_URL overrides targets.local at run time.",
+
+  "targets": {
+    "local": "http://127.0.0.1:3100",
+    "preview": "REPLACE_WITH_PREVIEW_URL",
+    "production": "https://climbixmarketing.com"
+  },
+
+  "paths": [
+    { "path": "/", "weight": 30 },
+    { "path": "/pricing", "weight": 15 },
+    { "path": "/services", "weight": 15 },
+    { "path": "/case-studies", "weight": 10 },
+    { "path": "/blog", "weight": 10 },
+    { "path": "/services/ppc", "weight": 5 },
+    { "path": "/services/performance-marketing", "weight": 5 },
+    { "path": "/free-tools", "weight": 5 },
+    { "path": "/contact", "weight": 5 }
+  ],
+
+  "thresholds": {
+    "http_req_failed": ["rate<0.01"],
+    "http_req_duration": ["p(95)<1500", "p(99)<3000"],
+    "checks": ["rate>0.99"],
+    "server_errors": ["rate<0.001"]
+  },
+
+  "stages": [
+    { "name": "baseline",   "duration": "30s", "target": 10 },
+    { "name": "ramp-50",    "duration": "1m",  "target": 50 },
+    { "name": "ramp-100",   "duration": "1m",  "target": 100 },
+    { "name": "ramp-250",   "duration": "2m",  "target": 250 },
+    { "name": "ramp-500",   "duration": "2m",  "target": 500 },
+    { "name": "ramp-750",   "duration": "2m",  "target": 750 },
+    { "name": "ramp-1000",  "duration": "3m",  "target": 1000 },
+    { "name": "soak-1000",  "duration": "120s", "target": 1000 },
+    { "name": "ramp-down",  "duration": "1m",  "target": 0 }
+  ],
+
+  "smoke": {
+    "vus": 10,
+    "duration": "30s",
+    "gracefulStop": "10s"
+  },
+
+  "browser": {
+    "viewports": [
+      { "name": "desktop", "width": 1440, "height": 900 },
+      { "name": "mobile", "width": 390, "height": 844, "isMobile": true }
+    ],
+    "budgets": {
+      "ttfbMs": 800,
+      "lcpMs": 2500,
+      "cls": 0.1,
+      "totalBytes": 1500000
+    }
+  }
+}

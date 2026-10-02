@@ -68,3 +68,6 @@ id_rsa*
 # safe-push: secrets / caches / bloat
 /db/*.db
 *.db-journal
+
+# perf audit output: raw k6 JSON runs to ~1GB, regenerate instead of committing
+perf/results/*.json
