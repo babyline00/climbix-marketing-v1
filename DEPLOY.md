@@ -27,6 +27,36 @@ npx vercel --prod           # deploy the linked project
   Prisma/Vercel integration it does this automatically; via plain `next build`
   it already runs because the build script includes it.
 
+## 1b. Uploads (required on serverless)
+
+Vercel mounts the app directory **read-only** (`EROFS`), so
+`POST /api/media` and `POST /api/documents` cannot write to
+`public/uploads` there. Create a Blob store and set its token:
+
+```powershell
+npx vercel blob store add blob
+```
+
+Then in Vercel → the project → Settings → Environment Variables add:
+
+| Variable                | Value                              |
+| ----------------------- | ---------------------------------- |
+| `BLOB_READ_WRITE_TOKEN` | the token `vercel blob store add` printed |
+
+Storage is chosen at runtime by `src/lib/storage.ts`:
+`BLOB_READ_WRITE_TOKEN` present → Vercel Blob; absent → local disk
+(`next dev`, self-hosted containers). Nothing else needs configuring, and the
+`/uploads/...` URLs already stored in the database keep working.
+
+Files over 4 MB bypass the serverless 4.5 MB request-body cap by uploading
+straight from the browser through `POST /api/media/upload-token`, then
+registering the resulting object. That path returns 404 when Blob is not
+configured, and the client falls back to the multipart upload.
+
+Existing local files in `public/uploads` are **not** copied to Blob. To migrate
+them, re-upload through the admin media library, or move the objects and update
+`Media.url` / `Document.url`.
+
 ## 2. Self-host (Vercel-free, NFS/ECS/Railway)
 
 The build already emits `.next/standalone` + copies static + public.

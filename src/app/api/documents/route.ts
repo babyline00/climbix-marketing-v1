@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { existsSync } from "fs";
 import { isResponse, logActivity, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db-alias";
+import {
+  DIRECT_UPLOAD_SIZE_LIMIT,
+  MAX_DIRECT_UPLOAD_SIZE,
+  buildStoredName,
+  removeUpload,
+  storageProvider,
+  storeUpload,
+} from "@/lib/storage";
+import {
+  BLOCKED_EXTENSIONS,
+  MAX_LOCAL_DOCUMENT_SIZE as MAX_SIZE,
+} from "@/lib/storage-policy";
 
 export const runtime = "nodejs";
 
 // File types that must never be uploaded (executables / scripts / server code)
-const BLOCKED_EXTENSIONS = [
-  ".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".sh", ".bash",
-  ".ps1", ".jar", ".apk", ".app", ".deb", ".rpm", ".php", ".jsp",
-  ".asp", ".aspx", ".dll", ".so", ".bin", ".wsf", ".vbs",
-];
-const MAX_SIZE = 25 * 1024 * 1024; // 25MB
+// are shared via BLOCKED_EXTENSIONS in @/lib/storage-policy.
 const DOCUMENT_CATEGORIES = ["general", "contract", "proposal", "invoice", "report", "design", "other"];
 const RELATED_TYPES = ["project", "client", "lead", "staff"] as const;
 
@@ -104,8 +109,24 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: "File too large (max 25MB)" }, { status: 400 });
+    // Serverless request bodies are capped at 4.5 MB; browser-direct uploads
+    // handle anything larger.
+    const maxSize = storageProvider() === "blob" ? MAX_DIRECT_UPLOAD_SIZE : MAX_SIZE;
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        { error: `File too large (max ${Math.floor(maxSize / (1024 * 1024))}MB)` },
+        { status: 400 }
+      );
+    }
+    if (file.size > DIRECT_UPLOAD_SIZE_LIMIT && storageProvider() === "blob") {
+      return NextResponse.json(
+        {
+          error:
+            `File too large for direct upload (max ${Math.floor(DIRECT_UPLOAD_SIZE_LIMIT / (1024 * 1024))}MB). ` +
+            "Larger files must use the direct storage upload flow.",
+        },
+        { status: 400 }
+      );
     }
     if (file.size === 0) {
       return NextResponse.json({ error: "File is empty" }, { status: 400 });
@@ -141,50 +162,72 @@ export async function POST(req: NextRequest) {
       resolvedRelatedName = record.name;
     }
 
+    // Blob storage failures are environment-specific, so name the cause
+    // instead of returning a bare 500 the operator has to decode from logs.
+    const storageHint =
+      storageProvider() === "blob"
+        ? "Failed to save file to storage"
+        : "Failed to save file to disk. If this is a serverless deployment, set BLOB_READ_WRITE_TOKEN.";
+
     // Store file with randomized name (original extension preserved)
-    const uploadsDir = path.join(process.cwd(), "public", "uploads", "documents");
-    if (!existsSync(uploadsDir)) {
-      await mkdir(uploadsDir, { recursive: true });
-    }
-    const storedName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
+    const storedName = buildStoredName(file.name, ext);
     const buffer = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(uploadsDir, storedName), buffer);
 
-    const doc = await prisma.document.create({
-      data: {
-        name,
+    let url: string;
+    try {
+      ({ url } = await storeUpload({
+        folder: "documents",
         storedName,
-        url: `/uploads/documents/${storedName}`,
-        mimeType: file.type || "application/octet-stream",
-        size: file.size,
-        category,
-        uploadedBy: session.user.name,
-        relatedType,
-        relatedId: relatedType ? relatedId : null,
-        relatedName: relatedType ? resolvedRelatedName : null,
-        notes,
-      },
-    });
+        body: buffer,
+        contentType: file.type || "application/octet-stream",
+      }));
+    } catch (e) {
+      console.error("POST /api/documents storage error", e);
+      return NextResponse.json({ error: storageHint }, { status: 500 });
+    }
 
-    await logActivity({
-      userId: session.user.id,
-      userName: session.user.name,
-      action: "document.create",
-      module: "documents",
-      details: `Uploaded document ${doc.name}`,
-    });
+    try {
+      const doc = await prisma.document.create({
+        data: {
+          name,
+          storedName,
+          url,
+          mimeType: file.type || "application/octet-stream",
+          size: file.size,
+          category,
+          uploadedBy: session.user.name,
+          relatedType,
+          relatedId: relatedType ? relatedId : null,
+          relatedName: relatedType ? resolvedRelatedName : null,
+          notes,
+        },
+      });
 
-    // In-app notification
-    await prisma.notification.create({
-      data: {
-        type: "system",
-        title: "Document uploaded",
-        message: `${doc.name} was uploaded by ${session.user.name}`,
-        href: "#admin",
-      },
-    });
+      await logActivity({
+        userId: session.user.id,
+        userName: session.user.name,
+        action: "document.create",
+        module: "documents",
+        details: `Uploaded document ${doc.name}`,
+      });
 
-    return NextResponse.json({ document: doc }, { status: 201 });
+      // In-app notification
+      await prisma.notification.create({
+        data: {
+          type: "system",
+          title: "Document uploaded",
+          message: `${doc.name} was uploaded by ${session.user.name}`,
+          href: "#admin",
+        },
+      });
+
+      return NextResponse.json({ document: doc }, { status: 201 });
+    } catch (e) {
+      // Record failed — don't leave an orphaned object behind.
+      await removeUpload({ folder: "documents", storedName, url });
+      console.error("POST /api/documents error", e);
+      return NextResponse.json({ error: "Failed to upload document" }, { status: 500 });
+    }
   } catch (e) {
     console.error("POST /api/documents error", e);
     return NextResponse.json({ error: "Failed to upload document" }, { status: 500 });

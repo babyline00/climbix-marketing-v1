@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unlink } from "fs/promises";
-import path from "path";
 import { isResponse, logActivity, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db-alias";
+import { removeUpload } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -102,12 +101,12 @@ export async function DELETE(
 
     await prisma.document.delete({ where: { id } });
 
-    // Best-effort file removal (record already gone)
-    try {
-      await unlink(path.join(process.cwd(), "public", "uploads", "documents", doc.storedName));
-    } catch {
-      /* file may already be gone */
-    }
+    // Best-effort object removal (record already gone)
+    await removeUpload({
+      folder: "documents",
+      storedName: doc.storedName,
+      url: doc.url,
+    });
 
     await logActivity({
       userId: session.user.id,

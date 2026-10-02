@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { unlink } from "fs/promises";
-import path from "path";
 import { isResponse, requirePermission } from "@/lib/auth";
+import { removeUpload } from "@/lib/storage";
 
 // DELETE /api/media/[id] — delete a media file
 export async function DELETE(
@@ -20,13 +19,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Media not found" }, { status: 404 });
     }
 
-    // Delete file from disk
-    const filePath = path.join(process.cwd(), "public", media.storedName);
-    try {
-      await unlink(filePath);
-    } catch {
-      // File may not exist, continue
-    }
+    // Remove the stored object (best effort — may already be gone)
+    await removeUpload({
+      folder: "media",
+      storedName: media.storedName,
+      url: media.url,
+    });
 
     // Delete from database
     await db.media.delete({ where: { id } });
