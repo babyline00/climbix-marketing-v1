@@ -30,8 +30,21 @@ const FOLDER_PREFIX: Record<UploadFolder, string> = {
   documents: "uploads/documents",
 };
 
+/**
+ * The Blob token, or null when Blob is not usable.
+ *
+ * Trimmed and length-checked rather than just truthy: an env var set to an
+ * empty string — what you get from clearing a dashboard field or copying an
+ * example env file — is truthy, which would select Blob and then fail every
+ * write with an opaque auth error instead of falling back to disk.
+ */
+export function blobToken(): string | null {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  return token ? token : null;
+}
+
 export function storageProvider(): StorageProvider {
-  return process.env.BLOB_READ_WRITE_TOKEN ? "blob" : "disk";
+  return blobToken() ? "blob" : "disk";
 }
 
 /** True when uploads are stored remotely rather than on the local filesystem. */
@@ -84,12 +97,13 @@ export async function storeUpload(args: {
 }): Promise<StoredUpload> {
   const { folder, storedName, body, contentType } = args;
   const pathname = blobPathname(folder, storedName);
+  const token = blobToken();
 
-  if (storageProvider() === "blob") {
+  if (token) {
     const result = await put(pathname, body, {
       access: "public",
       addRandomSuffix: false, // storedName is already unique
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token,
       ...(contentType ? { contentType } : {}),
     });
     return { url: result.url, pathname };
@@ -118,10 +132,11 @@ export async function removeUpload(args: {
   url: string;
 }): Promise<void> {
   const { folder, storedName, url } = args;
+  const token = blobToken();
   try {
-    if (storageProvider() === "blob") {
+    if (token) {
       if (url.startsWith("http://") || url.startsWith("https://")) {
-        await del(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+        await del(url, { token });
       }
       return;
     }

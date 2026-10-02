@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleUpload } from "@vercel/blob/client";
 import { isResponse, requirePermission } from "@/lib/auth";
+import { blobToken } from "@/lib/storage";
 import { ALLOWED_IMAGE_TYPES, BLOCKED_EXTENSIONS, MAX_DIRECT_UPLOAD_SIZE } from "@/lib/storage-policy";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   const session = await requirePermission(req, "media.manage");
   if (isResponse(session)) return session;
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!blobToken()) {
     return NextResponse.json({ error: "Direct upload not configured" }, { status: 404 });
   }
 

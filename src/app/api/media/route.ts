@@ -6,6 +6,7 @@ import { isResponse, requirePermission } from "@/lib/auth";
 import {
   DIRECT_UPLOAD_SIZE_LIMIT,
   MAX_DIRECT_UPLOAD_SIZE,
+  blobToken,
   buildStoredName,
   isRemoteStorage,
   removeUpload,
@@ -113,7 +114,7 @@ async function registerDirectUpload(body: Record<string, unknown>) {
 
   let metadata;
   try {
-    metadata = await head(url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    metadata = await head(url, { token: blobToken() ?? "" });
   } catch {
     return jsonError("Uploaded file could not be verified", 400);
   }
@@ -121,6 +122,11 @@ async function registerDirectUpload(body: Record<string, unknown>) {
   // head() only resolves objects on this store, so the URL is known to belong
   // to us. Discard the object when it turns out to be unacceptable.
   const dispose = () => removeUpload({ folder: "media", storedName: filename, url });
+
+  if (!isRemoteStorage()) {
+    // No usable Blob token, so there is no store the object could be in.
+    return jsonError("Direct upload is not configured", 400);
+  }
 
   const mimeType = metadata.contentType || "application/octet-stream";
   const size = metadata.size;
