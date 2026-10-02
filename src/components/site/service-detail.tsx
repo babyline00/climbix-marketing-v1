@@ -32,6 +32,19 @@ const fadeUp = {
   }),
 };
 
+// Same slide, starting opaque. The h1 is the LCP candidate and the subheading
+// becomes the largest painted element on narrow viewports; LCP is only recorded
+// once an element paints, so fading these in from opacity 0 delays it by the
+// full animation duration.
+const riseUp = {
+  hidden: { opacity: 1, y: 16 },
+  show: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] },
+  }),
+};
+
 export function ServiceDetail({ service }: { service: ServiceContent }) {
   const Icon = getServiceIcon(service.icon);
   const { openScheduler } = useScheduler();
@@ -87,7 +100,7 @@ export function ServiceDetail({ service }: { service: ServiceContent }) {
 
             <motion.h1
               custom={1}
-              variants={fadeUp}
+              variants={riseUp}
               initial="hidden"
               animate="show"
               className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-balance leading-[1.05]"
@@ -98,7 +111,7 @@ export function ServiceDetail({ service }: { service: ServiceContent }) {
 
             <motion.p
               custom={2}
-              variants={fadeUp}
+              variants={riseUp}
               initial="hidden"
               animate="show"
               className="mt-6 text-lg lg:text-xl text-white/70 max-w-2xl text-pretty"

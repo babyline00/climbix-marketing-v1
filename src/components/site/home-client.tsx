@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { SiteHeader } from "@/components/site/header";
 import { Hero } from "@/components/site/hero";
 import { Problem } from "@/components/site/problem";
@@ -18,7 +19,6 @@ import { SiteFooter } from "@/components/site/footer";
 import { TrustBadges } from "@/components/site/trust-badges";
 import { ClientLogos } from "@/components/site/client-logos";
 import { Offers } from "@/components/site/offers";
-import { AdminPanel } from "@/components/admin/admin-panel";
 import { AnnouncementPopup } from "@/components/site/announcement-popup";
 import { ServicesProvider } from "@/components/site/services-context";
 import {
@@ -32,6 +32,7 @@ import {
 import type { HeaderData } from "@/lib/header";
 import type { SectionContentMap } from "@/lib/section-content";
 import type { ServiceContent } from "@/data/services";
+import type { BrandSettings } from "@/lib/brand";
 
 /**
  * Homepage sections rendered in admin-defined order with admin-editable
@@ -85,27 +86,47 @@ function SectionRenderer({
 function HomePage({
   data,
   header,
+  brand,
 }: {
   data: HomePageData;
   header: HeaderData | null;
+  brand: BrandSettings;
 }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <SiteHeader links={header?.links} />
+      <SiteHeader links={header?.links} brand={brand} />
       <main className="flex-1">
         <SectionRenderer data={data} content={data.content} />
       </main>
-      <SiteFooter />
+      <SiteFooter brand={brand} />
     </div>
   );
 }
 
+/**
+ * The admin panel is reachable from the public site via the `#admin` hash (the
+ * footer links to it, and notification emails do too), but only admins ever use
+ * it. It drags in the tiptap editor and recharts — over 1.6 MB of raw JS and CSS
+ * — so it must not be in the public page's initial payload.
+ */
+const AdminPanel = dynamic(
+  () => import("@/components/admin/admin-panel").then((m) => m.AdminPanel),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-screen bg-slate-950" aria-busy="true" aria-label="Loading admin" />
+    ),
+  }
+);
+
 function AppContent({
   data,
   header,
+  brand,
 }: {
   data: HomePageData;
   header: HeaderData | null;
+  brand: BrandSettings;
 }) {
   const [isAdmin, setIsAdmin] = React.useState(false);
 
@@ -122,12 +143,10 @@ function AppContent({
   if (isAdmin) {
     return <AdminPanel />;
   }
-
-  return (
-    <>
+  return (    <>
       {/* Admin-managed announcement popup — public views only */}
       <AnnouncementPopup popup={header?.popup ?? null} />
-      <HomePage data={data} header={header} />
+      <HomePage data={data} header={header} brand={brand} />
     </>
   );
 }
@@ -136,14 +155,16 @@ export function HomePageClient({
   data,
   header,
   services,
+  brand,
 }: {
   data: HomePageData;
   header: HeaderData | null;
   services: ServiceContent[];
+  brand: BrandSettings;
 }) {
   return (
     <ServicesProvider services={services}>
-      <AppContent data={data} header={header} />
+      <AppContent data={data} header={header} brand={brand} />
     </ServicesProvider>
   );
 }

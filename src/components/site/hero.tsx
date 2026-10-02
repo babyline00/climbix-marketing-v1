@@ -46,6 +46,30 @@ const fadeUp = {
   }),
 };
 
+/**
+ * Same slide, but starts fully opaque.
+ *
+ * The h1 is this page's Largest Contentful Paint candidate, and LCP is not
+ * recorded until the element is actually painted. Fading it in from opacity 0
+ * therefore gates LCP on a 0.5s animation: measured homepage LCP was ~1.2s
+ * against an FCP of ~0.36s, and almost all of that gap was this fade.
+ *
+ * Starting from a visible offset keeps the motion while letting the headline
+ * paint on the first frame.
+ */
+const riseUp = {
+  hidden: { opacity: 1, y: 16 },
+  show: (i = 0) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      delay: i * 0.08,
+      ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
+    },
+  }),
+};
+
 const HERO_BADGES = [
   { icon: Search, label: "SEO" },
   { icon: Bot, label: "AI Search" },
@@ -110,7 +134,7 @@ export function Hero({ content }: { content?: HeroContent }) {
 
             <motion.h1
               custom={1}
-              variants={fadeUp}
+              variants={riseUp}
               initial="hidden"
               animate="show"
               className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-balance leading-[1.05]"
@@ -121,7 +145,7 @@ export function Hero({ content }: { content?: HeroContent }) {
 
             <motion.p
               custom={2}
-              variants={fadeUp}
+              variants={riseUp}
               initial="hidden"
               animate="show"
               className="mt-6 text-lg lg:text-xl text-white/70 max-w-xl text-pretty"
