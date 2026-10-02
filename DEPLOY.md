@@ -33,20 +33,33 @@ Vercel mounts the app directory **read-only** (`EROFS`), so
 `POST /api/media` and `POST /api/documents` cannot write to
 `public/uploads` there. Create a Blob store and set its token:
 
-```powershell
-npx vercel blob store add blob
+```bash
+# Create the store AND set BLOB_READ_WRITE_TOKEN for the linked project in one
+# step. The store name must be at least 5 characters, and --yes is required
+# because the command links the store to every environment.
+npx vercel blob create-store climbix-media --access public --yes
 ```
 
-Then in Vercel → the project → Settings → Environment Variables add:
+Confirm it landed:
+
+```bash
+npx vercel env ls    # BLOB_READ_WRITE_TOKEN should list Production, Preview, Development
+```
+
+Storage is chosen at runtime by `src/lib/storage.ts`: a non-blank
+`BLOB_READ_WRITE_TOKEN` selects Vercel Blob, otherwise local disk (`next dev`,
+self-hosted containers). Nothing else needs configuring, and the
+`/uploads/...` URLs already stored in the database keep working.
+
+If you would rather set the token by hand, in Vercel → the project → Settings
+→ Environment Variables:
 
 | Variable                | Value                              |
 | ----------------------- | ---------------------------------- |
-| `BLOB_READ_WRITE_TOKEN` | the token `vercel blob store add` printed |
+| `BLOB_READ_WRITE_TOKEN` | the token `create-store` printed   |
 
-Storage is chosen at runtime by `src/lib/storage.ts`:
-`BLOB_READ_WRITE_TOKEN` present → Vercel Blob; absent → local disk
-(`next dev`, self-hosted containers). Nothing else needs configuring, and the
-`/uploads/...` URLs already stored in the database keep working.
+Leave the variable **deleted**, not present-but-blank: a blank value reads as
+configured, so uploads would target Blob with an invalid token.
 
 Files over 4 MB bypass the serverless 4.5 MB request-body cap by uploading
 straight from the browser through `POST /api/media/upload-token`, then
