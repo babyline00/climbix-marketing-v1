@@ -114,6 +114,10 @@ model Media {
   title      String?
   type       String   // "image" | "video" | "document"
   createdAt  DateTime @default(now())
+
+  // The media library lists every row newest-first with no take, so this sort
+  // is a full scan plus sort without the index.
+  @@index([createdAt])
 }
 
 // Pages — dynamic pages that can be created/edited/deleted
@@ -161,6 +165,11 @@ model BlogPost {
   publishedAt DateTime  @default(now())
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+
+  // Three call sites filter on status and order by publishedAt (sitemap,
+  // /api/blog-posts, lib/blog). Composite so the filter and the sort are both
+  // served by the index.
+  @@index([status, publishedAt])
 }
 
 // Categories — for blog posts and pages

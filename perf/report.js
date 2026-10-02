@@ -49,36 +49,36 @@ rl.on("line", (line) => {
     return; // partial trailing line from an interrupted run
   }
 
-  // Sample points carry tags, so they can be attributed to a load stage.
-  if (m.type === "Point" && m.tags && m.tags.stage) {
-    const s = stage(m.tags.stage);
-    if (m.metric === "http_req_duration") s.durations.push(m.data.value);
+  // In k6's JSON output the tags hang off data.tags, not off the top level.
+  const tags = (m.data && m.data.tags) || m.tags || null;
+  const value = m.data ? m.data.value : undefined;
+
+  // type:"Metric" lines are metric *definitions* emitted at the end of the run
+  // (data.name, data.type, no value). Only type:"Point" lines are samples.
+  if (m.type === "Metric") return;
+
+  if (m.type !== "Point" || typeof value !== "number") return;
+
+  // Sample points carrying a stage tag can be attributed to a load stage.
+  if (tags && tags.stage) {
+    const s = stage(tags.stage);
+    if (m.metric === "http_req_duration") s.durations.push(value);
     else if (m.metric === "http_req_failed") {
       s.failedSamples++;
-      if (m.data.value > 0) s.failed++;
+      if (value > 0) s.failed++;
     } else if (m.metric === "http_reqs") {
-      s.reqs += m.data.value;
-      totals.reqs += m.data.value;
-    } else if (m.metric === "iterations") {
-      totals.iterations += m.data.value;
+      // One point per request; tagged with the request's own tags.
+      s.reqs += value;
+      totals.reqs += value;
     }
     return;
   }
 
-  // Periodic metric points carry the live VU gauge.
-  if (m.type === "Point" && !m.tags) {
-    if (m.metric === "vus" || m.metric === "vus_max") {
-      totals.maxVus = Math.max(totals.maxVus, m.data.value);
-      return;
-    }
-  }
-
-  if (m.type === "Metric") {
-    if (m.metric === "http_reqs") totals.reqs += m.data.value;
-    if (m.metric === "iterations") totals.iterations += m.data.value;
-    if (m.metric === "vus" || m.metric === "vus_max") {
-      totals.maxVus = Math.max(totals.maxVus, m.data.value);
-    }
+  // Untagged points are the periodic counters and the live VU gauge.
+  if (m.metric === "http_reqs") totals.reqs += value;
+  else if (m.metric === "iterations") totals.iterations += value;
+  else if (m.metric === "vus" || m.metric === "vus_max") {
+    totals.maxVus = Math.max(totals.maxVus, value);
   }
 });
 
