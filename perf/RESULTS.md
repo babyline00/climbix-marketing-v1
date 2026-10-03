@@ -74,6 +74,51 @@ Homepage asset breakdown, raw bytes:
 | JS gzipped | — | 368 KB |
 | Admin-only JS+CSS in payload | 1,630 KB (tiptap 998, recharts 414, recharts CSS 219) | 0 KB |
 
+## 2b. Repeat-visit caching
+
+Measured with a fresh browser context (empty HTTP cache, no service worker)
+against the same context after it had been primed.
+
+| Metric | Cold (first visit) | Warm (repeat visit) | Change |
+| --- | ---: | ---: | ---: |
+| Transferred bytes | 685 KB | 0 KB | **−100 %** |
+| First Contentful Paint | 336 ms | 156 ms | **−54 %** |
+| TTFB | 61 ms | 10 ms | −84 % |
+| DOMContentLoaded | 141 ms | 57 ms | −60 % |
+| Requests | 59 | 75 | +16 |
+
+Transfer of 0 KB means every subresource was served from the service worker or
+the HTTP cache. Request count rises because cached navigation still issues the
+subresource requests; they resolve locally rather than over the network.
+
+Three layers, each with a different safety rule:
+
+**HTTP cache headers on public reads** (`src/lib/cache-headers.ts`). Anonymous
+visitors get `public, max-age=60, s-maxage=300, stale-while-revalidate=600` with
+`Vary: Cookie`; a signed-in user gets `private, no-store`. The split is required
+because `/api/pages` and `/api/blog-posts` drop the `status: "published"` filter
+when a session exists, so one shared cache policy would either leak drafts to
+the public or serve admins stale data. Both paths verified.
+
+**Service worker** (`public/sw.js`). Caches only `/_next/static/*`
+(content-hashed, so a cached entry cannot be stale) and `/_next/image`, both
+cache-first. Capped at 120 and 80 entries with oldest-first eviction. Nothing is
+precached on install, because a precache pins one build and hands visitors a
+stale shell after every deploy.
+
+**Offline fallback.** Navigations are network-first; the cached copy is used
+only when the network fails. Verified: with the network disabled the homepage
+still returns 200 with correct content.
+
+Deliberately not cached: `/api/*`, in both layers. Verified no API entry appears
+in any service-worker cache.
+
+The agent widget previously fetched `/api/agent/config` with `cache: "no-store"`,
+which defeated any caching; it now uses the HTTP cache.
+
+First-load performance is unaffected: median LCP 224 ms, TTFB 18 ms, CLS 0.000
+with the worker registered.
+
 ## 3. Load test
 
 Staged ramp 10 → 1,000 VUs, 120 s soak, ramp down. Thresholds: error rate
@@ -176,6 +221,8 @@ and the footer link plus notification-email deep links still work.
 | 6 | Low | Seven models have an unindexed `createdAt`; two sorts are now indexed. | `EXPLAIN` Seq Scan |
 | 7 | Low | INP has no credible measurement. | n=1 and n=2 interaction samples discarded |
 | 8 | Info | Page-weight measurement using `content-length` undercounted 78 KB against an actual 1.1 MB, because compressed responses omit the header. | `browser-performance.js` now reads CDP `encodedDataLength` |
+| 9 | Medium | Repeat visits re-downloaded the whole site: no browser cache on API reads and no service worker. | Warm visit transferred 685 KB |
+| 10 | Medium | `/api/agent/config` was fetched with `cache: "no-store"`, forcing a round trip on every page load. | `voice-agent-widget.tsx` |
 
 ## 10. What a production capacity number would require
 
