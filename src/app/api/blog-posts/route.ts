@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSession, isResponse, requirePermission } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { revalidatePath } from "next/cache";
+import { publicReadCacheHeaders } from "@/lib/cache-headers";
 
 // GET /api/blog-posts — public published posts; authenticated content users can see drafts
 export async function GET(req: NextRequest) {
@@ -15,7 +16,10 @@ export async function GET(req: NextRequest) {
       where: session ? undefined : { status: "published" },
       orderBy: { publishedAt: "desc" },
     });
-    return NextResponse.json({ posts });
+    return NextResponse.json(
+      { posts },
+      { headers: publicReadCacheHeaders(session !== null) }
+    );
   } catch (e) {
     console.error("GET /api/blog-posts error", e);
     return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });

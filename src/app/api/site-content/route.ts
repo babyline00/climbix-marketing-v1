@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isResponse, requirePermission } from "@/lib/auth";
+import { getSession, isResponse, requirePermission } from "@/lib/auth";
+import { publicReadCacheHeaders } from "@/lib/cache-headers";
 
 // GET /api/site-content — fetch all site content as key-value map
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const rows = await db.siteContent.findMany();
     const content: Record<string, string> = {};
     for (const row of rows) content[row.key] = row.value;
-    return NextResponse.json({ content });
+    return NextResponse.json(
+      { content },
+      { headers: publicReadCacheHeaders((await getSession(req)) !== null) }
+    );
   } catch (e) {
     console.error("GET /api/site-content error", e);
     return NextResponse.json(

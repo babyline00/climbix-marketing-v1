@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAgentConfig } from "@/lib/settings";
+import { publicReadCacheHeaders } from "@/lib/cache-headers";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,9 @@ export async function GET() {
       // widget can resolve it via speechSynthesis.getVoices() ("" = browser default).
       browserVoiceName:
         cfg.voiceProvider === "browser" ? cfg.browserVoiceName : "",
-    });
+      // Identical for every visitor and safe to cache: no session, no secrets.
+      // Lets the widget skip the round trip on repeat visits.
+    }, { headers: publicReadCacheHeaders(false) });
   } catch (err) {
     console.error("[agent/config] error:", err);
     // Fail closed to safe defaults — the widget has its own fallbacks.

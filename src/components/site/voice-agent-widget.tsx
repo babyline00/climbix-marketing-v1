@@ -111,7 +111,10 @@ export function VoiceAgentWidget() {
   // Load admin-managed configuration (name, greeting, quick replies, switches).
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/agent/config", { cache: "no-store" })
+    // Rely on the HTTP cache rather than forcing a network round trip. The
+    // endpoint sends Cache-Control for anonymous visitors, so a repeat visit
+    // is served from the browser cache; admin edits still land within the TTL.
+    fetch("/api/agent/config")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: AgentPublicConfig | null) => {
         if (cancelled || !data) return;

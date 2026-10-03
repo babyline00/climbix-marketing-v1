@@ -7,6 +7,7 @@ import { SiteProviders } from "@/components/site/site-providers";
 import { AnalyticsSnippets, type TagConfig } from "@/components/site/analytics-snippets";
 import { ConsentBanner } from "@/components/site/consent-banner";
 import { CustomCodeInjector } from "@/components/site/custom-code-injector";
+import { ServiceWorkerRegistration } from "@/components/site/service-worker-registration";
 import { getSettingsCached } from "@/lib/settings";
 import { organizationJsonLd, websiteJsonLd } from "@/lib/seo";
 import { SITE_NAME, SITE_URL } from "@/data/seo-meta";
@@ -103,6 +104,7 @@ export default async function RootLayout({
           />
         )}
         <VoiceAgentWidget />
+        <ServiceWorkerRegistration />
         <Toaster />
       </body>
     </html>
