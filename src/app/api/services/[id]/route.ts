@@ -10,6 +10,24 @@ function revalidateService(slug: string) {
   revalidatePath(`/services/${slug}`);
 }
 
+/**
+ * Prisma reports a unique-constraint violation as P2002. A slug collision can
+ * still happen after the up-front check if two admins save the same slug at
+ * once, so this is the backstop that turns a raw 500 into a 409 the UI can
+ * explain.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  return (
+    typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002"
+  );
+}
+
+/** True when `slug` is already taken by a row other than `exceptId`. */
+async function slugInUse(slug: string, exceptId?: string): Promise<boolean> {
+  const conflict = await db.service.findUnique({ where: { slug } });
+  return Boolean(conflict) && conflict!.id !== exceptId;
+}
+
 // Static-backed rows are addressed as "static:<slug>" so that editing a
 // seeded default upserts the override row instead of erroring.
 function resolveKey(id: string): { slug?: string; rowId?: string } {
@@ -68,20 +86,25 @@ export async function PATCH(
     if (typeof body.position === "number") data.position = body.position;
     if (body.slug) data.slug = slugify(String(body.slug));
 
+    // One collision check for both addressing modes. Previously only the
+    // static:<slug> path checked, so saving a real row with a taken slug fell
+    // through to a raw unique-constraint error.
+    const desiredSlug = data.slug ? String(data.slug) : undefined;
+    if (desiredSlug) {
+      const selfId = slug
+        ? (await db.service.findUnique({ where: { slug } }))?.id
+        : rowId;
+      if (await slugInUse(desiredSlug, selfId)) {
+        return NextResponse.json(
+          { error: `Slug "${desiredSlug}" is already in use` },
+          { status: 409 }
+        );
+      }
+    }
+
     let row;
     if (slug) {
       const existing = await db.service.findUnique({ where: { slug } });
-      if (data.slug && data.slug !== slug) {
-        const conflict = await db.service.findUnique({
-          where: { slug: String(data.slug) },
-        });
-        if (conflict && conflict.id !== existing?.id) {
-          return NextResponse.json(
-            { error: `Slug "${String(data.slug)}" is already in use` },
-            { status: 409 }
-          );
-        }
-      }
       row = existing
         ? await db.service.update({ where: { id: existing.id }, data: data as never })
         : await db.service.create({
@@ -108,8 +131,12 @@ export async function PATCH(
           });
     } else {
       if (!rowId) return NextResponse.json({ error: "Bad id" }, { status: 400 });
-      row = await db.service.update({ where: { id: rowId }, data: data as never }).catch(() => null);
-      if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      // Check existence separately instead of inferring it from a failed
+      // update: a swallowed unique-constraint error used to be reported as
+      // "Not found", which sent the admin looking for a row that was there.
+      const exists = await db.service.findUnique({ where: { id: rowId } });
+      if (!exists) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      row = await db.service.update({ where: { id: rowId }, data: data as never });
     }
 
     revalidateService(String(data.slug || slug || row.slug));
@@ -122,6 +149,14 @@ export async function PATCH(
     });
     return NextResponse.json({ service: row });
   } catch (e) {
+    if (isUniqueViolation(e)) {
+      // Lost a race against a concurrent save on the same slug, so the
+      // up-front check passed but the write still collided.
+      return NextResponse.json(
+        { error: "That slug is already in use. Pick a different one." },
+        { status: 409 }
+      );
+    }
     console.error("PATCH /api/services/[id] error", e);
     return NextResponse.json({ error: "Failed to update service" }, { status: 500 });
   }
