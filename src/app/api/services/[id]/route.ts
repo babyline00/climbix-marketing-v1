@@ -3,23 +3,12 @@ import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { isResponse, requirePermission, logActivity } from "@/lib/auth";
 import { slugify } from "@/lib/service-data";
+import { isUniqueViolation } from "@/lib/prisma-error";
 
 function revalidateService(slug: string) {
   revalidatePath("/");
   revalidatePath("/services");
   revalidatePath(`/services/${slug}`);
-}
-
-/**
- * Prisma reports a unique-constraint violation as P2002. A slug collision can
- * still happen after the up-front check if two admins save the same slug at
- * once, so this is the backstop that turns a raw 500 into a 409 the UI can
- * explain.
- */
-function isUniqueViolation(e: unknown): boolean {
-  return (
-    typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002"
-  );
 }
 
 /** True when `slug` is already taken by a row other than `exceptId`. */

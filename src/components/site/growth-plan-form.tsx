@@ -159,6 +159,7 @@ export function GrowthPlanForm({
   const [serviceError, setServiceError] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  const [duplicate, setDuplicate] = React.useState(false);
   const headingRef = React.useRef<HTMLHeadingElement>(null);
 
   const isSuccess = step >= TOTAL_STEPS;
@@ -266,8 +267,9 @@ export function GrowthPlanForm({
         }),
       });
 
+      const data = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
         setSubmitError(
           (data && typeof data.error === "string" && data.error) ||
             "Something went wrong. Please try again."
@@ -275,6 +277,10 @@ export function GrowthPlanForm({
         return;
       }
 
+      // A repeat submission from an address already on file comes back 200 with
+      // duplicate:true rather than an error. Say so, instead of implying a new
+      // enquiry was just filed when we already had it.
+      setDuplicate(Boolean(data && data.duplicate));
       goTo(TOTAL_STEPS);
       onSuccess?.();
     } catch {
@@ -290,6 +296,7 @@ export function GrowthPlanForm({
     setErrors({});
     setServiceError(false);
     setSubmitError(null);
+    setDuplicate(false);
     setDirection(-1);
     setStep(0);
   }
@@ -703,11 +710,12 @@ export function GrowthPlanForm({
               <Check className="size-7" aria-hidden />
             </div>
             <h2 ref={headingRef} tabIndex={-1} className={t.successTitle}>
-              You&apos;re on the list.
+              {duplicate ? "We already have your details." : "You're on the list."}
             </h2>
             <p className={t.successBody}>
-              Thanks for reaching out. Our growth team will review your information
-              and get back to you shortly.
+              {duplicate
+                ? "Thanks for coming back — this address is already with our growth team, so there's no need to send it again. We'll be in touch shortly."
+                : "Thanks for reaching out. Our growth team will review your information and get back to you shortly."}
             </p>
             <Button
               type="button"

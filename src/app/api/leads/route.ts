@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmail, leadNotificationEmail, auditCompleteEmail } from "@/lib/email";
+import { isUniqueViolation, uniqueViolationFields } from "@/lib/prisma-error";
 import { calculateLeadScore } from "@/lib/lead-scoring";
 import { isResponse, requirePermission } from "@/lib/auth";
 import { runLeadWorkflows } from "@/lib/workflow-engine";
@@ -30,6 +31,10 @@ export async function GET(req: NextRequest) {
 
 // POST /api/leads — create a new lead (public, from forms)
 export async function POST(req: NextRequest) {
+  // Declared outside the try: the duplicate-email branch in the catch needs it,
+  // and the body is only destructured inside.
+  let submittedEmail: string | null = null;
+
   // Public endpoint — throttle per client to prevent form spam/flooding.
   const lim = rateLimit(clientKey(req, "leads"), 6, 60_000);
   if (!lim.ok) {
@@ -66,6 +71,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    submittedEmail = email;
 
     // Calculate lead score
     const { score: leadScore, tier: leadTier } = calculateLeadScore({
@@ -187,6 +193,22 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ lead }, { status: 201 });
   } catch (e) {
+    if (isUniqueViolation(e) && uniqueViolationFields(e).includes("email") && submittedEmail) {
+      // A repeat submission from an address already on file. The lead exists
+      // and the team has the details, so this is not a failure — returning 500
+      // left the visitor staring at "Failed to create lead" and assuming their
+      // enquiry had been lost, when in fact it was recorded the first time.
+      // Deliberately non-destructive: the notification and workflow already
+      // fired on the original, so quietly rewriting the row afterwards would
+      // leave the record inconsistent with what the team was told.
+      const existing = await db.lead
+        .findUnique({ where: { email: submittedEmail } })
+        .catch(() => null);
+      console.log(
+        `[Lead] duplicate submission from ${submittedEmail} — existing lead ${existing?.id ?? "not found"}`
+      );
+      return NextResponse.json({ lead: existing, duplicate: true }, { status: 200 });
+    }
     console.error("POST /api/leads error", e);
     return NextResponse.json(
       { error: "Failed to create lead" },
