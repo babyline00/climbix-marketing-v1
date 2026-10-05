@@ -15,7 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StrategyCallForm } from "./strategy-call-form";
+import { GrowthPlanForm } from "./growth-plan-form";
 import type { HeroContent } from "@/lib/section-content";
 
 const HERO_DEFAULTS: HeroContent = {
@@ -230,14 +230,15 @@ export function Hero({ content }: { content?: HeroContent }) {
             </motion.div>
           </div>
 
-          {/* Right: Schedule a Strategy Call form */}
+          {/* Right: inline growth plan form, on the same dark glass surface the rest
+              of the hero uses */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
             className="lg:col-span-5"
           >
-            <StrategyCallForm id="strategy-call" />
+            <GrowthPlanForm source="hero-inline" variant="hero" />
           </motion.div>
         </div>
       </div>

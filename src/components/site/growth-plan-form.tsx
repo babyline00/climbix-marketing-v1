@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Check, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarCheck, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,10 +22,12 @@ import { cn } from "@/lib/utils";
  * shape is deliberate — a single long form on a marketing page converts badly,
  * and asking which services first lets the sales team route the lead.
  *
- * Styling follows this project's tokens rather than hardcoded hex, so the form
- * matches the site in both light and dark. The structural cues from the design
- * reference are kept: square inputs, uppercase micro-labels, a hairline
- * progress bar, and an inverted fill on the selected option.
+ * Two variants, because the two placements sit on opposite surfaces:
+ *   dialog — the light theme used by the modal
+ *   hero   — the site's dark glass surface, used inline in the hero
+ * Keeping both palettes in one lookup makes the difference explicit instead of
+ * scattering conditionals through the markup, and guarantees the hero card and
+ * the hero's other cards stay in step when the theme changes.
  */
 
 const SERVICE_OPTIONS = [
@@ -58,6 +60,60 @@ const GOAL_OPTIONS = [
 
 const TOTAL_STEPS = 3;
 
+/** Palette per surface. Colours come from the project's own brand tokens. */
+const TONE = {
+  light: {
+    card: "",
+    progressTrack: "bg-border",
+    progressBar: "bg-primary",
+    meta: "text-muted-foreground",
+    heading: "mb-3 max-w-2xl text-4xl font-bold leading-[1.05] tracking-[-0.02em] outline-none sm:text-5xl",
+    body: "max-w-xl leading-relaxed text-muted-foreground",
+    optionIdle: "border-border bg-card hover:-translate-y-0.5 hover:border-foreground",
+    optionSelected: "border-foreground bg-foreground text-background",
+    optionArrowOn: "opacity-100",
+    optionArrowOff: "opacity-35",
+    fieldLabel: "text-xs font-bold tracking-wide text-foreground",
+    input: "h-[52px] rounded-none bg-card",
+    textarea: "min-h-[130px] resize-y rounded-none bg-card leading-relaxed",
+    primary:
+      "group inline-flex min-h-[54px] items-center gap-5 rounded-none bg-foreground px-6 text-[13px] font-bold text-background transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/90",
+    back: "min-h-[54px] bg-transparent px-1 text-[13px] font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground",
+    trust: "text-white/0",
+    successBadge: "bg-foreground text-background",
+    successTitle: "mb-4 text-4xl font-bold tracking-tight outline-none sm:text-5xl text-foreground",
+    successBody: "mx-auto max-w-lg text-base leading-relaxed text-muted-foreground",
+  },
+  dark: {
+    card: "rounded-3xl border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30 backdrop-blur-xl lg:p-7",
+    progressTrack: "bg-white/10",
+    progressBar: "bg-gradient-to-r from-brand-400 to-brand-600",
+    meta: "text-white/60",
+    heading:
+      "mb-3 max-w-2xl text-[26px] font-bold leading-[1.1] tracking-[-0.02em] text-white outline-none lg:text-3xl",
+    body: "max-w-xl text-sm leading-relaxed text-white/65",
+    optionIdle:
+      "border-white/12 bg-white/[0.04] text-white hover:-translate-y-0.5 hover:border-brand-500/70 hover:bg-white/[0.08]",
+    optionSelected:
+      "border-brand-500 bg-brand-500/15 text-white ring-1 ring-brand-500/40",
+    optionArrowOn: "text-brand-400 opacity-100",
+    optionArrowOff: "text-white/40 opacity-60",
+    fieldLabel: "text-xs font-bold tracking-wide text-white",
+    input:
+      "h-[50px] rounded-xl border-white/12 bg-white/[0.06] text-white placeholder:text-white/35 focus-visible:border-brand-500",
+    textarea:
+      "min-h-[120px] resize-y rounded-xl border-white/12 bg-white/[0.06] leading-relaxed text-white placeholder:text-white/35 focus-visible:border-brand-500",
+    primary:
+      "group inline-flex min-h-[50px] items-center justify-center gap-3 rounded-xl bg-brand-500 px-6 text-[13px] font-bold text-ink-900 shadow-lg shadow-brand-500/25 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-400 hover:shadow-brand-500/40",
+    back: "min-h-[50px] bg-transparent px-1 text-[13px] font-semibold text-white/60 hover:bg-transparent hover:text-white",
+    trust: "text-white/55",
+    successBadge:
+      "bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-lg shadow-brand-500/30",
+    successTitle: "mb-4 text-3xl font-bold tracking-tight text-white outline-none lg:text-4xl",
+    successBody: "mx-auto max-w-lg text-sm leading-relaxed text-white/65",
+  },
+} as const;
+
 type FormState = {
   firstName: string;
   lastName: string;
@@ -86,11 +142,15 @@ type FieldErrors = Partial<Record<"firstName" | "email", string>>;
 
 export function GrowthPlanForm({
   source = "growth-plan",
+  variant = "dialog",
   onSuccess,
 }: {
   source?: string;
+  variant?: "dialog" | "hero";
   onSuccess?: () => void;
 }) {
+  const t = variant === "hero" ? TONE.dark : TONE.light;
+
   const [step, setStep] = React.useState(0); // 0..2, then 3 = success
   const [direction, setDirection] = React.useState(1);
   const [services, setServices] = React.useState<string[]>([]);
@@ -106,8 +166,9 @@ export function GrowthPlanForm({
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-    // Clear a field's error as soon as the visitor edits it.
-    setErrors((prev) => (prev[key as "firstName" | "email"] ? { ...prev, [key]: undefined } : prev));
+    setErrors((prev) =>
+      prev[key as "firstName" | "email"] ? { ...prev, [key]: undefined } : prev
+    );
   };
 
   const goTo = (next: number) => {
@@ -120,7 +181,9 @@ export function GrowthPlanForm({
 
   const toggleService = (value: string) => {
     setServices((prev) => {
-      const next = prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value];
+      const next = prev.includes(value)
+        ? prev.filter((v) => v !== value)
+        : [...prev, value];
       if (next.length > 0) setServiceError(false);
       return next;
     });
@@ -160,8 +223,7 @@ export function GrowthPlanForm({
     event.preventDefault();
     if (submitting) return;
 
-    // Re-validate on submit: the visitor can reach step 3 by editing fields in
-    // another way, and an invalid email must not reach the API.
+    // Re-validate on submit: an invalid email must never reach the API.
     if (!validateStep2()) {
       goTo(1);
       return;
@@ -175,7 +237,9 @@ export function GrowthPlanForm({
     setSubmitting(true);
     setSubmitError(null);
 
-    const fullName = [form.firstName.trim(), form.lastName.trim()].filter(Boolean).join(" ");
+    const fullName = [form.firstName.trim(), form.lastName.trim()]
+      .filter(Boolean)
+      .join(" ");
     // The API stores a single `service` string, so the multi-select is folded
     // into a readable list. Budget has no dedicated column, so it goes into the
     // message rather than being dropped.
@@ -236,20 +300,55 @@ export function GrowthPlanForm({
     exit: { opacity: 0, x: direction * -24 },
   };
 
+  const inputProps = {
+    variant: variant === "hero" ? ("default" as const) : ("default" as const),
+  };
+
   return (
-    <form onSubmit={handleSubmit} noValidate className="w-full">
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      className={cn("w-full", variant === "hero" && t.card)}
+    >
+      {/* ── Hero header ── */}
+      {variant === "hero" && !isSuccess && (
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-500/30">
+            <CalendarCheck className="size-5 text-white" aria-hidden />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold leading-tight text-white">
+              Start your growth plan
+            </h3>
+            <p className="text-xs text-white/60">Free strategy · No obligation</p>
+          </div>
+        </div>
+      )}
+
       {/* ── Progress ── */}
       {!isSuccess && (
-        <div className="mb-10">
+        <div className={cn(variant === "hero" ? "mb-6" : "mb-10")}>
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            <span
+              className={cn(
+                "text-[11px] font-bold uppercase tracking-[0.18em]",
+                t.meta
+              )}
+            >
               Growth Strategy
             </span>
-            <span className="text-xs text-muted-foreground">{percent}%</span>
+            <span className={cn("text-xs tabular-nums", t.meta)}>{percent}%</span>
           </div>
-          <div className="h-[3px] w-full overflow-hidden bg-border" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Form progress">
+          <div
+            className={cn("h-[3px] w-full overflow-hidden", t.progressTrack)}
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Form progress"
+          >
             <motion.div
-              className="h-full bg-primary"
+              className={cn("h-full", t.progressBar)}
               initial={false}
               animate={{ width: `${percent}%` }}
               transition={{ duration: 0.4, ease: "easeOut" }}
@@ -261,25 +360,28 @@ export function GrowthPlanForm({
       <AnimatePresence mode="wait" initial={false} custom={direction}>
         {/* ── Step 1: services ── */}
         {!isSuccess && step === 0 && (
-          <motion.section key="step-0" {...slide} transition={{ duration: 0.28, ease: "easeOut" }}>
+          <motion.section
+            key="step-0"
+            {...slide}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+          >
             <StepHeading
+              t={t}
               headingRef={headingRef}
               step="01 / 03"
               title="What can we help you grow?"
-              body="Select the services that best match your current growth goals. We'll use this to prepare a strategy for your business."
+              body="Select the services that best match your goals and we'll prepare a strategy around them."
             />
 
-            <div className="mb-8 grid gap-3 sm:grid-cols-2">
+            <div className="mb-7 grid gap-2 sm:grid-cols-2">
               {SERVICE_OPTIONS.map((option) => {
                 const selected = services.includes(option.value);
                 return (
                   <label
                     key={option.value}
                     className={cn(
-                      "group relative flex min-h-[78px] cursor-pointer items-center justify-between gap-4 border px-5 py-5 transition-all duration-200 focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 motion-reduce:transition-none",
-                      selected
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border bg-card hover:-translate-y-0.5 hover:border-foreground"
+                      "group relative flex min-h-[62px] cursor-pointer items-center justify-between gap-3 border px-4 py-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-brand-500 focus-within:ring-offset-2 focus-within:ring-offset-transparent motion-reduce:transition-none",
+                      selected ? t.optionSelected : t.optionIdle
                     )}
                   >
                     <input
@@ -288,11 +390,18 @@ export function GrowthPlanForm({
                       checked={selected}
                       onChange={() => toggleService(option.value)}
                     />
-                    <span className="text-[15px] font-semibold">{option.label}</span>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        variant === "hero" ? "text-[13px]" : "text-[15px]"
+                      )}
+                    >
+                      {option.label}
+                    </span>
                     <ArrowUpRight
                       className={cn(
-                        "size-4 shrink-0 transition-opacity duration-200",
-                        selected ? "opacity-100" : "opacity-35"
+                        "size-4 shrink-0 transition-all duration-200",
+                        selected ? t.optionArrowOn : t.optionArrowOff
                       )}
                       aria-hidden
                     />
@@ -302,20 +411,27 @@ export function GrowthPlanForm({
             </div>
 
             {serviceError && (
-              <p role="alert" className="-mt-4 mb-5 text-xs font-medium text-destructive">
+              <p
+                role="alert"
+                className="-mt-3 mb-4 text-xs font-medium text-red-400"
+              >
                 Please select at least one service.
               </p>
             )}
 
-            <div className="mt-9 flex items-center justify-between gap-4">
-              <span />
-              <Button
-                type="button"
-                onClick={handleNext}
-                className="group inline-flex min-h-[54px] items-center gap-5 rounded-none bg-foreground px-6 text-[13px] font-bold text-background transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/90"
-              >
+            <div
+              className={cn(
+                "flex items-center justify-between gap-4",
+                variant === "hero" ? "mt-6" : "mt-9"
+              )}
+            >
+              {variant === "dialog" && <span />}
+              <Button type="button" onClick={handleNext} className={t.primary}>
                 Continue
-                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden />
+                <ArrowRight
+                  className="size-4 transition-transform duration-200 group-hover:translate-x-1"
+                  aria-hidden
+                />
               </Button>
             </div>
           </motion.section>
@@ -323,38 +439,45 @@ export function GrowthPlanForm({
 
         {/* ── Step 2: business details ── */}
         {!isSuccess && step === 1 && (
-          <motion.section key="step-1" {...slide} transition={{ duration: 0.28, ease: "easeOut" }}>
+          <motion.section
+            key="step-1"
+            {...slide}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+          >
             <StepHeading
+              t={t}
               headingRef={headingRef}
               step="02 / 03"
               title="Tell us about your business."
-              body="A little context helps us understand your business and prepare a more useful growth strategy."
+              body="A little context helps us prepare a strategy that's actually useful to you."
             />
 
-            <div className="flex flex-col gap-5">
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="First Name" required error={errors.firstName}>
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field t={t} label="First Name" required error={errors.firstName}>
                   <Input
                     value={form.firstName}
                     onChange={(e) => set("firstName", e.target.value)}
                     placeholder="First name"
                     autoComplete="given-name"
                     aria-invalid={!!errors.firstName}
-                    className="h-[52px] rounded-none bg-card"
+                    className={t.input}
+                    {...inputProps}
                   />
                 </Field>
-                <Field label="Last Name">
+                <Field t={t} label="Last Name">
                   <Input
                     value={form.lastName}
                     onChange={(e) => set("lastName", e.target.value)}
                     placeholder="Last name"
                     autoComplete="family-name"
-                    className="h-[52px] rounded-none bg-card"
+                    className={t.input}
+                    {...inputProps}
                   />
                 </Field>
               </div>
 
-              <Field label="Work Email" required error={errors.email}>
+              <Field t={t} label="Work Email" required error={errors.email}>
                 <Input
                   type="email"
                   value={form.email}
@@ -362,45 +485,56 @@ export function GrowthPlanForm({
                   placeholder="you@company.com"
                   autoComplete="email"
                   aria-invalid={!!errors.email}
-                  className="h-[52px] rounded-none bg-card"
+                  className={t.input}
+                  {...inputProps}
                 />
               </Field>
 
-              <Field label="Company Name">
+              <Field t={t} label="Company Name">
                 <Input
                   value={form.company}
                   onChange={(e) => set("company", e.target.value)}
                   placeholder="Your company name"
                   autoComplete="organization"
-                  className="h-[52px] rounded-none bg-card"
+                  className={t.input}
+                  {...inputProps}
                 />
               </Field>
 
-              <Field label="Website">
+              <Field t={t} label="Website">
                 <Input
                   type="url"
                   value={form.website}
                   onChange={(e) => set("website", e.target.value)}
                   placeholder="https://yourcompany.com"
                   autoComplete="url"
-                  className="h-[52px] rounded-none bg-card"
+                  className={t.input}
+                  {...inputProps}
                 />
               </Field>
 
-              <Field label="Phone / WhatsApp">
+              <Field t={t} label="Phone / WhatsApp">
                 <Input
                   type="tel"
                   value={form.phone}
                   onChange={(e) => set("phone", e.target.value)}
                   placeholder="+1 555 000 0000"
                   autoComplete="tel"
-                  className="h-[52px] rounded-none bg-card"
+                  className={t.input}
+                  {...inputProps}
                 />
               </Field>
 
-              <Field label="Monthly Marketing Budget">
+              <Field t={t} label="Monthly Marketing Budget">
                 <Select value={form.budget} onValueChange={(v) => set("budget", v)}>
-                  <SelectTrigger className="h-[52px] rounded-none bg-card" aria-label="Monthly marketing budget">
+                  <SelectTrigger
+                    className={cn(
+                      t.input,
+                      variant === "hero" &&
+                        "border-white/12 bg-white/[0.06] text-white data-[placeholder]:text-white/35"
+                    )}
+                    aria-label="Monthly marketing budget"
+                  >
                     <SelectValue placeholder="Select your budget" />
                   </SelectTrigger>
                   <SelectContent>
@@ -414,21 +548,21 @@ export function GrowthPlanForm({
               </Field>
             </div>
 
-            <div className="mt-9 flex items-center justify-between gap-4">
-              <Button
-                type="button"
-                onClick={handleBack}
-                className="min-h-[54px] bg-transparent px-1 text-[13px] font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground"
-              >
+            <div
+              className={cn(
+                "flex items-center justify-between gap-4",
+                variant === "hero" ? "mt-6" : "mt-9"
+              )}
+            >
+              <Button type="button" onClick={handleBack} className={t.back}>
                 ← Back
               </Button>
-              <Button
-                type="button"
-                onClick={handleNext}
-                className="group inline-flex min-h-[54px] items-center gap-5 rounded-none bg-foreground px-6 text-[13px] font-bold text-background transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/90"
-              >
+              <Button type="button" onClick={handleNext} className={t.primary}>
                 Continue
-                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden />
+                <ArrowRight
+                  className="size-4 transition-transform duration-200 group-hover:translate-x-1"
+                  aria-hidden
+                />
               </Button>
             </div>
           </motion.section>
@@ -436,25 +570,28 @@ export function GrowthPlanForm({
 
         {/* ── Step 3: goals ── */}
         {!isSuccess && step === 2 && (
-          <motion.section key="step-2" {...slide} transition={{ duration: 0.28, ease: "easeOut" }}>
+          <motion.section
+            key="step-2"
+            {...slide}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+          >
             <StepHeading
+              t={t}
               headingRef={headingRef}
               step="03 / 03"
               title="What's your biggest growth goal?"
-              body="Tell us what you're trying to achieve. This helps us understand where we can create the biggest impact."
+              body="Tell us what you're trying to achieve so we can aim at the highest-impact work."
             />
 
-            <div className="mb-7 grid gap-3 sm:grid-cols-2">
+            <div className="mb-5 grid gap-2 sm:grid-cols-2">
               {GOAL_OPTIONS.map((option) => {
                 const selected = form.goal === option.value;
                 return (
                   <label
                     key={option.value}
                     className={cn(
-                      "relative flex min-h-[70px] cursor-pointer items-center border px-5 py-4 transition-colors duration-200 focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 motion-reduce:transition-none",
-                      selected
-                        ? "border-foreground bg-foreground text-background"
-                        : "border-border bg-card hover:border-foreground"
+                      "relative flex min-h-[58px] cursor-pointer items-center border px-4 py-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-brand-500 focus-within:ring-offset-2 focus-within:ring-offset-transparent motion-reduce:transition-none",
+                      selected ? t.optionSelected : t.optionIdle
                     )}
                   >
                     <input
@@ -465,40 +602,52 @@ export function GrowthPlanForm({
                       onChange={() => set("goal", option.value)}
                       className="sr-only"
                     />
-                    <span className="text-sm font-semibold">{option.label}</span>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        variant === "hero" ? "text-[13px]" : "text-sm"
+                      )}
+                    >
+                      {option.label}
+                    </span>
                   </label>
                 );
               })}
             </div>
 
-            <Field label="Tell us more about your goals">
+            <Field t={t} label="Tell us more about your goals">
               <Textarea
                 value={form.message}
                 onChange={(e) => set("message", e.target.value)}
-                placeholder="What are you currently struggling with? What would you like to achieve?"
-                className="min-h-[130px] resize-y rounded-none bg-card leading-relaxed"
+                placeholder="What are you currently struggling with?"
+                className={t.textarea}
               />
             </Field>
 
             {submitError && (
-              <p role="alert" className="mt-5 text-xs font-medium text-destructive">
+              <p role="alert" className="mt-4 text-xs font-medium text-red-400">
                 {submitError}
               </p>
             )}
 
-            <div className="mt-9 flex items-center justify-between gap-4">
+            <div
+              className={cn(
+                "flex items-center justify-between gap-4",
+                variant === "hero" ? "mt-6" : "mt-9"
+              )}
+            >
               <Button
                 type="button"
                 onClick={handleBack}
                 disabled={submitting}
-                className="min-h-[54px] bg-transparent px-1 text-[13px] font-semibold text-muted-foreground hover:bg-transparent hover:text-foreground"
+                className={t.back}
               >
                 ← Back
               </Button>
               <Button
                 type="submit"
                 disabled={submitting}
-                className="group inline-flex min-h-[54px] items-center gap-5 rounded-none bg-foreground px-6 text-[13px] font-bold text-background transition-all duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 disabled:opacity-70"
+                className={t.primary}
               >
                 {submitting ? (
                   <>
@@ -508,21 +657,29 @@ export function GrowthPlanForm({
                 ) : (
                   <>
                     Start My Growth Plan
-                    <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-1" aria-hidden />
+                    <ArrowRight
+                      className="size-4 transition-transform duration-200 group-hover:translate-x-1"
+                      aria-hidden
+                    />
                   </>
                 )}
               </Button>
             </div>
 
-            <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-muted-foreground">
+            <ul
+              className={cn(
+                "mt-5 flex flex-wrap gap-x-5 gap-y-1.5 text-[11px]",
+                t.trust
+              )}
+            >
               <li className="flex items-center gap-1.5">
-                <Check className="size-3" aria-hidden /> Free strategy consultation
+                <Check className="size-3 text-brand-400" aria-hidden /> Free strategy consultation
               </li>
               <li className="flex items-center gap-1.5">
-                <Check className="size-3" aria-hidden /> No commitment
+                <Check className="size-3 text-brand-400" aria-hidden /> No commitment
               </li>
               <li className="flex items-center gap-1.5">
-                <Check className="size-3" aria-hidden /> Confidential information
+                <Check className="size-3 text-brand-400" aria-hidden /> Confidential
               </li>
             </ul>
           </motion.section>
@@ -535,25 +692,27 @@ export function GrowthPlanForm({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="py-6 text-center"
+            className="py-4 text-center"
           >
-            <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-full bg-foreground text-background">
+            <div
+              className={cn(
+                "mx-auto mb-5 flex size-16 items-center justify-center rounded-full",
+                t.successBadge
+              )}
+            >
               <Check className="size-7" aria-hidden />
             </div>
-            <h2
-              ref={headingRef}
-              tabIndex={-1}
-              className="mb-4 text-4xl font-bold tracking-tight outline-none sm:text-5xl"
-            >
+            <h2 ref={headingRef} tabIndex={-1} className={t.successTitle}>
               You&apos;re on the list.
             </h2>
-            <p className="mx-auto max-w-lg text-base leading-relaxed text-muted-foreground">
-              Thanks for reaching out. Our growth team will review your information and get back to you shortly.
+            <p className={t.successBody}>
+              Thanks for reaching out. Our growth team will review your information
+              and get back to you shortly.
             </p>
             <Button
               type="button"
               onClick={reset}
-              className="mt-8 min-h-[52px] rounded-none bg-foreground px-6 text-[13px] font-bold text-background hover:bg-foreground/90"
+              className={cn(t.primary, "mt-6")}
             >
               Submit another request
             </Button>
@@ -564,58 +723,65 @@ export function GrowthPlanForm({
   );
 }
 
+type Tone = (typeof TONE)[keyof typeof TONE];
+
 function StepHeading({
+  t,
   headingRef,
   step,
   title,
   body,
 }: {
+  t: Tone;
   headingRef: React.RefObject<HTMLHeadingElement | null>;
   step: string;
   title: string;
   body: string;
 }) {
   return (
-    <header className="mb-8">
-      <span className="mb-4 inline-block text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+    <header className="mb-6">
+      <span
+        className={cn(
+          "mb-3 inline-block text-[11px] font-bold uppercase tracking-[0.2em]",
+          t.meta
+        )}
+      >
         {step}
       </span>
-      <h2
-        ref={headingRef}
-        tabIndex={-1}
-        className="mb-3 max-w-2xl text-4xl font-bold leading-[1.05] tracking-[-0.02em] outline-none sm:text-5xl"
-      >
+      <h2 ref={headingRef} tabIndex={-1} className={t.heading}>
         {title}
       </h2>
-      <p className="max-w-xl leading-relaxed text-muted-foreground">{body}</p>
+      <p className={t.body}>{body}</p>
     </header>
   );
 }
 
 function Field({
+  t,
   label,
   required,
   error,
   children,
 }: {
+  t: Tone;
   label: string;
   required?: boolean;
   error?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-xs font-bold tracking-wide">
+    <div className="flex flex-col gap-1.5">
+      <label className={t.fieldLabel}>
         {label}
         {required && (
-          <span className="ml-1 text-destructive" aria-hidden>
+          <span className="ml-1 text-brand-400" aria-hidden>
             *
           </span>
         )}
       </label>
       {children}
       {error && (
-        <span role="alert" className="text-[11px] font-medium text-destructive">
+        <span role="alert" className="text-[11px] font-medium text-red-400">
           {error}
         </span>
       )}
