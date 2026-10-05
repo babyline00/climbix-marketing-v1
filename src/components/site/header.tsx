@@ -21,10 +21,12 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { useScheduler } from "@/components/site/scheduler-context";
+import { useGrowthPlan } from "@/components/site/growth-plan-context";
 import { useServices } from "@/components/site/services-context";
 import { INDUSTRIES } from "@/data/industries";
 import { DEFAULT_HEADER_LINKS, type HeaderLinkItem } from "@/lib/header";
+import { DEFAULT_BRAND, type BrandSettings } from "@/lib/brand";
+import { BrandLockup, BrandLogo, BrandWordmark } from "@/components/site/brand-mark";
 
 type NavChild = {
   label: string;
@@ -78,10 +80,16 @@ function navChildrenFor(
   return undefined;
 }
 
-export function SiteHeader({ links }: { links?: HeaderLinkItem[] }) {
+export function SiteHeader({
+  links,
+  brand = DEFAULT_BRAND,
+}: {
+  links?: HeaderLinkItem[];
+  brand?: BrandSettings;
+}) {
   const [scrolled, setScrolled] = React.useState(false);
   const [openMenu, setOpenMenu] = React.useState<string | null>(null);
-  const { openScheduler } = useScheduler();
+  const { openGrowthPlan } = useGrowthPlan();
   const services = useServices();
 
   const servicesChildren: NavChild[] = services.map((s) => ({
@@ -271,7 +279,7 @@ export function SiteHeader({ links }: { links?: HeaderLinkItem[] }) {
               </Link>
             </Button>
             <Button
-              onClick={() => openScheduler({ source: "header-cta" })}
+              onClick={() => openGrowthPlan({ source: "header-cta" })}
               size="sm"
               className="group bg-brand-600 text-[15px] font-semibold text-white shadow-lg shadow-brand-600/25 transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-500 hover:shadow-brand-500/35 active:translate-y-0 motion-reduce:transition-none"
             >
@@ -340,7 +348,7 @@ export function SiteHeader({ links }: { links?: HeaderLinkItem[] }) {
                 <SheetClose asChild>
                   <Button
                     onClick={() =>
-                      openScheduler({ source: "mobile-header-cta" })
+                      openGrowthPlan({ source: "mobile-header-cta" })
                     }
                     className="w-full bg-brand-600 hover:bg-brand-700 text-white"
                   >

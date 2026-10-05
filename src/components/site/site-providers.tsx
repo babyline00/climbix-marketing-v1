@@ -4,11 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { SiteContentProvider } from "@/components/site/site-content-context";
 import { SchedulerProvider } from "@/components/site/scheduler-context";
+import { GrowthPlanProvider } from "@/components/site/growth-plan-context";
 
 /**
  * Global client providers shared by every page (home + all subpages).
- * Scheduler powers the strategy-call dialog; SiteContent feeds live
- * key-value copy (contact info, socials, stats) to header/footer/CTAs.
+ * Scheduler powers the strategy-call dialog; GrowthPlan powers the multi-step
+ * lead form; SiteContent feeds live key-value copy (contact info, socials,
+ * stats) to header/footer/CTAs.
  */
 export function SiteProviders({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -34,7 +36,9 @@ export function SiteProviders({ children }: { children: React.ReactNode }) {
 
   return (
     <SiteContentProvider>
-      <SchedulerProvider>{children}</SchedulerProvider>
+      <SchedulerProvider>
+        <GrowthPlanProvider>{children}</GrowthPlanProvider>
+      </SchedulerProvider>
     </SiteContentProvider>
   );
 }
