@@ -71,3 +71,7 @@ id_rsa*
 
 # perf audit output: raw k6 JSON runs to ~1GB, regenerate instead of committing
 perf/results/*.json
+
+# scratch reference dumps used while designing sections (not app code)
+/t4.html
+/prev.html
