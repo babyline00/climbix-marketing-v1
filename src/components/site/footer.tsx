@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { useSiteContent } from "@/components/site/site-content-context";
 import { useServices } from "@/components/site/services-context";
 import { INDUSTRIES } from "@/data/industries";
+import { DEFAULT_BRAND, type BrandSettings } from "@/lib/brand";
+import { BrandLockup } from "@/components/site/brand-mark";
 
 type FooterColumn = {
   title: string;
@@ -47,7 +49,7 @@ const STATIC_COLUMNS: FooterColumn[] = [
   },
 ];
 
-export function SiteFooter() {
+export function SiteFooter({ brand = DEFAULT_BRAND }: { brand?: BrandSettings }) {
   const [email, setEmail] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
   const { content } = useSiteContent();
@@ -87,25 +89,14 @@ export function SiteFooter() {
         {/* Top: brand + newsletter */}
         <div className="grid lg:grid-cols-12 gap-10 pb-12 border-b border-white/10">
           <div className="lg:col-span-5">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="size-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/30">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="size-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M3 17l6-6 4 4 7-7" />
-                  <path d="M14 8h6v6" />
-                </svg>
-              </div>
-              <span className="text-xl font-bold tracking-tight">
-                Climb<span className="gradient-text">ix</span>
-              </span>
+            <Link
+              href="/"
+              className="group inline-flex rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900"
+            >
+              <BrandLockup
+                brand={brand}
+                wordmarkClassName="text-xl tracking-tight"
+              />
             </Link>
             <p className="mt-4 text-sm text-white/60 max-w-sm leading-relaxed">
               Global SEO, AI Search Optimization, and Lead Generation agency.
@@ -200,7 +191,7 @@ export function SiteFooter() {
         {/* Bottom: legal + social */}
         <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-white/40 text-center sm:text-left">
-            © {new Date().getFullYear()} Climbix Marketing. All rights reserved. ·{" "}
+            © {new Date().getFullYear()} {brand.appName}. All rights reserved. ·{" "}
             <Link href="#" className="hover:text-white/60">
               Privacy
             </Link>{" "}

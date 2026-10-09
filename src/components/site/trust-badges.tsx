@@ -12,8 +12,14 @@ import {
   Globe,
   type LucideIcon,
 } from "lucide-react";
-import type { ItemsSectionContent } from "@/lib/section-content";
+import {
+  SECTION_CONTENT_DEFAULTS,
+  clampImageHeight,
+  resolveShowText,
+  type ImageStripContent,
+} from "@/lib/section-content";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 export type TrustBadgeData = {
   id: string;
@@ -47,13 +53,27 @@ export function TrustBadges({
   content,
 }: {
   items?: TrustBadgeData[];
-  content?: Partial<ItemsSectionContent>;
+  content?: Partial<ImageStripContent>;
 }) {
   const list =
     items && items.length > 0
       ? items
       : DEFAULTS;
-  void content; // badges are item-managed; heading intentionally minimal
+
+  // One size for the whole strip, chosen in the admin, so a mix of 500px
+  // partner marks and 160px emblems still lines up.
+  const size = clampImageHeight(
+    content?.imageHeight,
+    clampImageHeight(
+      SECTION_CONTENT_DEFAULTS["trust-badges"].imageHeight,
+      20
+    )
+  );
+
+  // Admin can hide the labels and show bare marks. The text stays in the DOM as
+  // screen-reader-only, because a badge reduced to an unlabelled icon (or an
+  // image with empty alt) would otherwise carry no accessible name at all.
+  const showText = resolveShowText(content?.showText);
 
   return (
     <section
@@ -61,11 +81,11 @@ export function TrustBadges({
       className="relative border-b border-border bg-muted/40 py-8"
     >
       <div className="mx-auto max-w-7xl container-px">
-        <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-4">
+        <ul className="flex flex-wrap items-center justify-center gap-3 lg:gap-4">
           {list.map((b, i) => {
             const Icon = TRUST_BADGE_ICONS[b.icon] || ShieldCheck;
             return (
-              <motion.div
+              <motion.li
                 key={b.id}
                 initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -74,17 +94,33 @@ export function TrustBadges({
                 className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 shadow-sm"
               >
                 {b.imageUrl ? (
-                  <Image src={b.imageUrl} alt="" width={20} height={20} className="size-5 object-contain" />
+                  <Image
+                    src={b.imageUrl}
+                    alt=""
+                    width={size}
+                    height={size}
+                    style={{ width: size, height: size }}
+                    className="shrink-0 object-contain"
+                  />
                 ) : (
-                  <Icon className="size-4 text-brand-600" />
+                  <Icon
+                    style={{ width: size, height: size }}
+                    className="shrink-0 text-brand-600"
+                    aria-hidden
+                  />
                 )}
-                <span className="text-sm font-medium text-foreground/80">
+                <span
+                  className={cn(
+                    "text-sm font-medium text-foreground/80",
+                    !showText && "sr-only"
+                  )}
+                >
                   {b.label}
                 </span>
-              </motion.div>
+              </motion.li>
             );
           })}
-        </div>
+        </ul>
       </div>
     </section>
   );

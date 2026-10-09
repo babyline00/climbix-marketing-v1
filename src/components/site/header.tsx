@@ -7,7 +7,6 @@ import {
   Menu,
   X,
   Search,
-  Sparkles,
   ChevronDown,
   ArrowRight,
 } from "lucide-react";
@@ -179,29 +178,9 @@ export function SiteHeader({
           <Link
             href="/"
             className="group flex items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-900"
-            aria-label="Climbix Marketing home"
+            aria-label={`${brand.appName} home`}
           >
-            <div className="relative">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 shadow-lg shadow-brand-500/30 transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3 motion-reduce:transition-none">
-                <svg
-                  viewBox="0 0 24 24"
-                  className="size-5 text-white transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M3 17l6-6 4 4 7-7" />
-                  <path d="M14 8h6v6" />
-                </svg>
-              </div>
-              <div className="absolute -inset-1 -z-10 rounded-xl bg-brand-500/30 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none" />
-            </div>
-            <span className="text-[1.35rem] font-bold leading-none tracking-[-0.04em] transition-transform duration-300 group-hover:translate-x-0.5 sm:text-[1.45rem] motion-reduce:transition-none">
-              Climb<span className="gradient-text">ix</span>
-            </span>
+            <BrandLockup brand={brand} />
           </Link>
           </motion.div>
 
@@ -306,13 +285,11 @@ export function SiteHeader({
             >
               <div className="flex items-center justify-between p-5 border-b border-border">
                 <SheetTitle className="flex items-center gap-2 text-lg font-bold">
-                  <div className="size-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center">
-                    <Sparkles className="size-4 text-white" />
-                  </div>
-                  Climbix Marketing
+                  <BrandLogo brand={brand} decorative />
+                  <BrandWordmark brand={brand} />
                 </SheetTitle>
                 <SheetDescription className="sr-only">
-                  Main navigation menu for Climbix Marketing website
+                  Main navigation menu for {brand.appName} website
                 </SheetDescription>
                 <SheetClose asChild>
                   <Button variant="ghost" size="icon" aria-label="Close menu">

@@ -24,7 +24,7 @@ const geistMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: "Climbix Marketing — SEO, AI Search & Lead Generation Agency",
@@ -62,6 +62,25 @@ export const metadata: Metadata = {
     follow: true,
   },
 };
+
+/**
+ * Favicon and Open Graph site name follow the admin Branding settings.
+ * Everything else stays on the static BASE_METADATA above.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettingsCached();
+  const icon =
+    settings["branding.faviconUrl"] || settings["branding.logoUrl"] || undefined;
+
+  return {
+    ...BASE_METADATA,
+    ...(icon ? { icons: { icon, apple: icon } } : {}),
+    openGraph: {
+      ...BASE_METADATA.openGraph,
+      siteName: settings["general.appName"] || BASE_METADATA.openGraph?.siteName,
+    },
+  };
+}
 
 export default async function RootLayout({
   children,

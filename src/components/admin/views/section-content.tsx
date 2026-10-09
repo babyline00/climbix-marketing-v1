@@ -13,11 +13,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { sectionIcon } from "@/components/admin/views/section-icons";
 import {
+  IMAGE_HEIGHT_PRESETS,
   SECTION_CONTENT_DEFAULTS,
   SECTION_KEYS,
   type SectionItem,
@@ -31,8 +39,10 @@ import {
 type Field = {
   name: string;
   label: string;
-  type: "text" | "textarea" | "items" | "stringlist";
+  type: "text" | "textarea" | "items" | "stringlist" | "select";
   itemFields?: { name: string; label: string }[];
+  /** Required for `select` — a fixed set of values, so no invalid input. */
+  options?: { value: string; label: string }[];
   hint?: string;
 };
 
@@ -69,9 +79,50 @@ const FIELD_SCHEMAS: Record<SectionKey, Field[]> = {
       itemFields: [{ name: "label", label: "Point" }],
     },
   ],
-  "trust-badges": [],
+  "trust-badges": [
+    {
+      name: "imageHeight",
+      label: "Badge image size",
+      type: "select",
+      options: IMAGE_HEIGHT_PRESETS.map((px) => ({
+        value: String(px),
+        label: `${px}px`,
+      })),
+      hint: "One size for every badge image and fallback icon, so marks of different proportions still line up.",
+    },
+    {
+      name: "showText",
+      label: "Show badge labels",
+      type: "select",
+      options: [
+        { value: "true", label: "Icon + text" },
+        { value: "false", label: "Icon only" },
+      ],
+      hint: "Turn off to show bare marks. Labels stay screen-reader-only, so each badge is still announced.",
+    },
+  ],
   "client-logos": [
     { name: "intro", label: "Intro line above logos", type: "text" },
+    {
+      name: "imageHeight",
+      label: "Logo image size",
+      type: "select",
+      options: IMAGE_HEIGHT_PRESETS.map((px) => ({
+        value: String(px),
+        label: `${px}px`,
+      })),
+      hint: "Height of each logo in the marquee. Width follows the image, so logos of different proportions keep their shape.",
+    },
+    {
+      name: "showText",
+      label: "Show logo text",
+      type: "select",
+      options: [
+        { value: "true", label: "Logo + name" },
+        { value: "false", label: "Logo only" },
+      ],
+      hint: "A logo's name is its text fallback, so turning this off shows only entries that have an uploaded image — and falls back to showing names again if none do. Names stay as alt text either way.",
+    },
   ],
   offers: [
     { name: "eyebrow", label: "Eyebrow", type: "text" },
@@ -468,6 +519,35 @@ export function SectionContentEditor() {
                           }
                         />
                       )}
+                      {field.hint && (
+                        <p className="text-xs text-muted-foreground">
+                          {field.hint}
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (field.type === "select") {
+                  const value = (values[field.name] as string) ?? "";
+                  return (
+                    <div key={field.name} className="space-y-1.5">
+                      <Label>{field.label}</Label>
+                      <Select
+                        value={value}
+                        onValueChange={(v) => setField(field.name, v)}
+                      >
+                        <SelectTrigger className="w-full sm:w-48">
+                          <SelectValue placeholder="Select a size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(field.options ?? []).map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {field.hint && (
                         <p className="text-xs text-muted-foreground">
                           {field.hint}

@@ -24,6 +24,8 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
+import { uploadMediaFile } from "@/lib/upload-client";
+import { toast } from "sonner";
 
 type Media = {
   id: string;
@@ -130,19 +132,13 @@ export function AdminAppearance() {
   const reset = () => setContent(original);
 
   const uploadImage = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("title", file.name);
-
     try {
-      const res = await fetch("/api/media", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.media) {
-        setContent({ ...content, heroImage: data.media.url });
-        setMedia([...media, data.media]);
-      }
+      const uploaded = await uploadMediaFile(file, { title: file.name });
+      setContent({ ...content, heroImage: uploaded.url });
+      setMedia([...media, uploaded]);
     } catch (e) {
       console.error(e);
+      toast.error(e instanceof Error ? e.message : "Image upload failed");
     }
   };
 

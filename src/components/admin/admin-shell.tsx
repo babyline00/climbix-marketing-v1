@@ -62,6 +62,7 @@ import { AdminPages } from "./views/pages";
 import { AdminBlogPosts } from "./views/blog-posts";
 import { AdminCategories } from "./views/categories";
 import { AdminAppearance } from "./views/appearance";
+import { AdminBranding } from "./views/branding";
 import { AdminEmails } from "./views/emails";
 import { AdminHomepage } from "./views/homepage";
 import { AdminHeaderManager } from "./views/header";
@@ -98,6 +99,7 @@ type View =
   | "blog-posts"
   | "categories"
   | "appearance"
+  | "branding"
   | "emails"
   | "projects"
   | "tasks"
@@ -166,7 +168,10 @@ const NAV_SECTIONS: NavSection[] = [
     id: "appearance",
     label: "Appearance",
     icon: Palette,
-    view: "appearance",
+    children: [
+      { label: "Hero & Sections", view: "appearance", icon: LayoutTemplate },
+      { label: "Branding", view: "branding", icon: ImageIcon },
+    ],
   },
   {
     id: "automations",
@@ -241,7 +246,8 @@ const VIEW_META: Record<View, { title: string; breadcrumb: string[] }> = {
   categories: { title: "Categories", breadcrumb: ["Home", "Content", "Categories"] },
   media: { title: "Media Library", breadcrumb: ["Home", "Media Library"] },
   documents: { title: "Document Library", breadcrumb: ["Home", "Content", "Document Library"] },
-  appearance: { title: "Appearance", breadcrumb: ["Home", "Appearance"] },
+  appearance: { title: "Appearance", breadcrumb: ["Home", "Appearance", "Hero & Sections"] },
+  branding: { title: "Branding", breadcrumb: ["Home", "Appearance", "Branding"] },
   leads: { title: "Leads", breadcrumb: ["Home", "CRM", "Leads"] },
   meetings: { title: "Meetings", breadcrumb: ["Home", "CRM", "Meetings"] },
   emails: { title: "Email Log", breadcrumb: ["Home", "CRM", "Email Log"] },
@@ -286,13 +292,14 @@ export function AdminShell({
     onLogout();
   };
 
-  // Hide the current view if the user's role lost access to it (e.g. role edited)
-  React.useEffect(() => {
-    const perm = VIEW_PERMISSIONS[view];
-    if (perm && !can(user.permissions, perm)) {
-      setView("dashboard");
-    }
-  }, [view, user.permissions]);
+  // A role edit can revoke access to whatever view the user is sitting on, so
+  // the rendered view is *derived* rather than corrected by an effect. The old
+  // effect painted the now-forbidden view for one frame and then bounced to the
+  // dashboard, and the view state could stay pointing at something the user is
+  // no longer allowed to open.
+  const viewPerm = VIEW_PERMISSIONS[view];
+  const activeView: View =
+    viewPerm && !can(user.permissions, viewPerm) ? "dashboard" : view;
 
   // ── Global search (Ctrl+K, debounced) ──
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -316,13 +323,20 @@ export function AdminShell({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  React.useEffect(() => {
-    const q = searchQuery.trim();
-    if (q.length < 2) {
+  // Typing applies the query and drops stale results in the same render. The
+  // effect-driven version left the previous term's results on screen for a beat
+  // after the query fell under two characters.
+  const applySearchQuery = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim().length < 2) {
       setSearchResults([]);
       setSearchLoading(false);
-      return;
     }
+  };
+
+  React.useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) return;
     setSearchLoading(true);
     const t = window.setTimeout(async () => {
       try {
@@ -367,7 +381,7 @@ export function AdminShell({
     setMobileNavOpen(false);
   };
 
-  const meta = VIEW_META[view];
+  const meta = VIEW_META[activeView];
 
   // Permission-filtered navigation
   const navSections = NAV_SECTIONS.map((section) => {
@@ -418,8 +432,8 @@ export function AdminShell({
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto scrollbar-thin">
           {navSections.map((section) => {
-            const isActive = section.view === view ||
-              (section.children?.some((c) => c.view === view));
+            const isActive = section.view === activeView ||
+              (section.children?.some((c) => c.view === activeView));
 
             if (section.view && !section.children) {
               return (
@@ -471,7 +485,7 @@ export function AdminShell({
                         onClick={() => selectView(child.view)}
                         className={cn(
                           "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                          view === child.view
+                          activeView === child.view
                             ? "bg-brand-500/15 text-brand-300 font-medium"
                             : "text-slate-400 hover:text-white hover:bg-slate-700/40"
                         )}
@@ -534,7 +548,7 @@ export function AdminShell({
               <Input
                 ref={searchRef}
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => applySearchQuery(e.target.value)}
                 onFocus={() => setSearchOpen(true)}
                 placeholder="Search leads, clients, projects... (Ctrl+K)"
                 className="pl-9 bg-slate-100 border-slate-200 rounded-full h-9 text-sm focus-visible:bg-white"
@@ -558,7 +572,7 @@ export function AdminShell({
                             key={`${group.key}-${item.id}`}
                             onClick={() => {
                               setSearchOpen(false);
-                              setSearchQuery("");
+                              applySearchQuery("");
                               if (group.key === "leads" || group.key === "pipeline") selectView("leads");
                               else if (group.key === "clients") selectView("clients");
                               else if (group.key === "projects" || group.key === "tasks") selectView("projects");
@@ -707,32 +721,33 @@ export function AdminShell({
           </div>
 
           {/* View content */}
-          {view === "dashboard" && <AdminDashboard onNavigate={(v) => selectView(v as View)} />}
-          {view === "homepage" && <AdminHomepage />}
-          {view === "header" && <AdminHeaderManager />}
-          {view === "services" && <AdminServices />}
-          {view === "leads" && <AdminLeads />}
-          {view === "meetings" && <AdminMeetings />}
-          {view === "content" && <AdminContent />}
-          {view === "media" && <AdminMedia />}
-          {view === "pages" && <AdminPages />}
-          {view === "blog-posts" && <AdminBlogPosts />}
-          {view === "categories" && <AdminCategories />}
-          {view === "appearance" && <AdminAppearance />}
-          {view === "emails" && <AdminEmails />}
-          {view === "staff" && <AdminStaff user={user} />}
-          {view === "roles" && <AdminRoles user={user} />}
-          {view === "activity" && <AdminActivity user={user} />}
-          {view === "pipeline" && <AdminPipeline user={user} />}
-          {view === "followups" && <AdminFollowups user={user} />}
-          {view === "clients" && <AdminClients user={user} />}
-          {view === "projects" && <AdminProjects user={user} />}
-          {view === "tasks" && <AdminTasks user={user} />}
-          {view === "documents" && <AdminDocuments user={user} />}
-          {view === "settings" && <AdminSettings user={user} />}
-          {view === "reports" && <AdminReports />}
-          {view === "notifications" && <AdminNotifications />}
-          {view === "automations" && <AdminAutomations user={user} />}
+          {activeView === "dashboard" && <AdminDashboard onNavigate={(v) => selectView(v as View)} />}
+          {activeView === "homepage" && <AdminHomepage />}
+          {activeView === "header" && <AdminHeaderManager />}
+          {activeView === "services" && <AdminServices />}
+          {activeView === "leads" && <AdminLeads />}
+          {activeView === "meetings" && <AdminMeetings />}
+          {activeView === "content" && <AdminContent />}
+          {activeView === "media" && <AdminMedia />}
+          {activeView === "pages" && <AdminPages />}
+          {activeView === "blog-posts" && <AdminBlogPosts />}
+          {activeView === "categories" && <AdminCategories />}
+          {activeView === "appearance" && <AdminAppearance />}
+          {activeView === "branding" && <AdminBranding />}
+          {activeView === "emails" && <AdminEmails />}
+          {activeView === "staff" && <AdminStaff user={user} />}
+          {activeView === "roles" && <AdminRoles user={user} />}
+          {activeView === "activity" && <AdminActivity user={user} />}
+          {activeView === "pipeline" && <AdminPipeline user={user} />}
+          {activeView === "followups" && <AdminFollowups user={user} />}
+          {activeView === "clients" && <AdminClients user={user} />}
+          {activeView === "projects" && <AdminProjects user={user} />}
+          {activeView === "tasks" && <AdminTasks user={user} />}
+          {activeView === "documents" && <AdminDocuments user={user} />}
+          {activeView === "settings" && <AdminSettings user={user} />}
+          {activeView === "reports" && <AdminReports />}
+          {activeView === "notifications" && <AdminNotifications />}
+          {activeView === "automations" && <AdminAutomations user={user} />}
         </main>
 
         {/* Change password dialog */}

@@ -4,6 +4,7 @@ import { AnnouncementPopup } from "@/components/site/announcement-popup";
 import { ServicesProvider } from "@/components/site/services-context";
 import { getHeaderData } from "@/lib/header";
 import { getAllServices } from "@/lib/service-data";
+import { getBrand } from "@/lib/settings";
 
 /**
  * Shared server shell for every public subpage:
@@ -12,18 +13,19 @@ import { getAllServices } from "@/lib/service-data";
  * dropdowns and any client service consumers reflect admin edits.
  */
 export async function PageShell({ children }: { children: React.ReactNode }) {
-  const [header, services] = await Promise.all([
+  const [header, services, brand] = await Promise.all([
     getHeaderData(),
     getAllServices(),
+    getBrand(),
   ]);
 
   return (
     <ServicesProvider services={services}>
       <div className="min-h-screen flex flex-col bg-background">
-        <SiteHeader links={header.links} />
+        <SiteHeader links={header.links} brand={brand} />
         <AnnouncementPopup popup={header.popup} />
         <main className="flex-1">{children}</main>
-        <SiteFooter />
+        <SiteFooter brand={brand} />
       </div>
     </ServicesProvider>
   );

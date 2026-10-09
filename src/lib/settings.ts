@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./db-alias";
 import { unstable_cache } from "next/cache";
+import { resolveBrand, DEFAULT_BRAND, type BrandSettings } from "./brand";
 
 // ─────────────────────────────────────────────────────────────
 // Settings — typed key/value configuration stored in the DB
@@ -19,6 +20,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   "branding.darkColor": "#080d19",
   "branding.logoUrl": "",
   "branding.faviconUrl": "",
+  "branding.siteName": DEFAULT_BRAND.siteName,
+  "branding.logoAlt": "",
+  "branding.showName": "true",
   // Security
   "security.sessionDays": "7",
   "security.maxLoginAttempts": "8",
@@ -106,6 +110,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
 
 /** Per-key max value length (overrides the generic 2000-char cap) */
 export const VALUE_MAX_LENGTHS: Record<string, number> = {
+  // Brand fields render inside the header lockup, which is width-constrained.
+  "branding.siteName": 40,
+  "branding.logoAlt": 120,
+  "general.appName": 80,
   "agent.welcome": 500,
   "agent.systemPrompt": 4000,
   "agent.provider": 20,
@@ -187,6 +195,7 @@ export const VALUE_MASK = "________MASKED________";
 
 /** Keys that are on/off switches stored as "true"/"false" */
 export const BOOLEAN_KEYS = new Set([
+  "branding.showName",
   "notifications.inAppEnabled",
   "notifications.emailEnabled",
   "notifications.whatsappEnabled",
@@ -292,6 +301,14 @@ export async function setSettings(values: Record<string, string>): Promise<numbe
 /** Cached copy of settings for server components (public site rendering).
  *  Wrapped so pages can stay statically prerendered (ISR) while scripts stay
  *  in sync with admin edits within the revalidate window. */
-export const getSettingsCached = unstable_cache(async () => getSettings(), ["climbix-public-settings"], {
+export const SETTINGS_CACHE_TAG = "climbix-public-settings";
+
+export const getSettingsCached = unstable_cache(async () => getSettings(), [SETTINGS_CACHE_TAG], {
   revalidate: 60,
+  tags: [SETTINGS_CACHE_TAG],
 });
+
+/** Resolved brand identity (logo, wordmark, favicon) for the public header. */
+export async function getBrand(): Promise<BrandSettings> {
+  return resolveBrand(await getSettingsCached());
+}

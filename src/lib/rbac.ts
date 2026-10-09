@@ -80,6 +80,7 @@ export const VIEW_PERMISSIONS: Record<string, string> = {
   categories: "content.manage",
   media: "media.view",
   appearance: "appearance.manage",
+  branding: "settings.manage",
   leads: "leads.view",
   pipeline: "leads.view",
   followups: "leads.view",
@@ -139,6 +140,7 @@ export const SYSTEM_ROLES: {
       "homepage.manage",
       "header.manage",
       "appearance.manage",
+      "settings.manage",
     ],
   },
   {

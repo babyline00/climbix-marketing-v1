@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { isResponse, logActivity, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/db-alias";
 import {
   BOOLEAN_KEYS,
   SECRET_KEYS,
   SETTING_ENUMS,
+  SETTINGS_CACHE_TAG,
   SETTING_KEYS,
   VALUE_MASK,
   VALUE_MAX_LENGTHS,
@@ -232,6 +234,13 @@ export async function PUT(req: NextRequest) {
     }
 
     const count = await setSettings(clean);
+
+    // Brand keys feed the header/footer, so drop the cached settings copy and
+    // re-render the public pages instead of waiting out the 60s revalidate.
+    if (Object.keys(clean).some((k) => k.startsWith("branding.") || k === "general.appName")) {
+      revalidateTag(SETTINGS_CACHE_TAG, "max");
+      revalidatePath("/", "layout");
+    }
 
     // Bust settings-dependent caches and notify
     await prisma.notification.create({
