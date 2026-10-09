@@ -81,7 +81,7 @@ export function setup() {
   return { baseUrl: BASE_URL, startedAt: Date.now() };
 }
 
-export default function (data) {
+export default function rampStaged(data) {
   const stage = stageAt((Date.now() - data.startedAt) / 1000);
   const path = PATHS[Math.floor(Math.random() * PATHS.length)];
 

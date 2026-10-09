@@ -52,7 +52,7 @@ export function setup() {
   return { baseUrl: BASE_URL };
 }
 
-export default function (data) {
+export default function smokeTen(data) {
   const path = PATHS[Math.floor(Math.random() * PATHS.length)];
   const res = http.get(`${data.baseUrl}${path}`, {
     tags: { name: path },
