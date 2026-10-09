@@ -5,6 +5,12 @@ import { Cookie } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getConsent, setConsent } from "@/lib/track-client";
 
+/** setConsent dispatches this event, so the store notifies on every choice. */
+function subscribeToConsent(onChange: () => void) {
+  window.addEventListener("climbix-consent-change", onChange);
+  return () => window.removeEventListener("climbix-consent-change", onChange);
+}
+
 export function ConsentBanner({
   message,
   acceptLabel,
@@ -14,17 +20,27 @@ export function ConsentBanner({
   acceptLabel: string;
   necessaryLabel: string;
 }) {
-  const [visible, setVisible] = React.useState(false);
   const [dismissing, setDismissing] = React.useState(false);
+  const [gone, setGone] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!getConsent()) setVisible(true);
-  }, []);
+  // Read consent as an external store rather than seeding state from an effect.
+  // The server snapshot reports "already consented", so the server render and
+  // the first client render both hide the banner — a lazy useState initializer
+  // would read localStorage during SSR and mismatch instead. The client
+  // snapshot is adopted right after hydration, so the banner still appears
+  // without the extra render pass the old effect caused.
+  const hasConsent = React.useSyncExternalStore(
+    subscribeToConsent,
+    () => getConsent() !== null,
+    () => true
+  );
+
+  const visible = !hasConsent && !gone;
 
   const choose = (choice: "all" | "necessary") => {
     setConsent(choice);
     setDismissing(true);
-    window.setTimeout(() => setVisible(false), 200);
+    window.setTimeout(() => setGone(true), 200);
   };
 
   if (!visible) return null;

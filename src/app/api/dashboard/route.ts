@@ -105,10 +105,8 @@ function buildDaySeries(since: Date, rows: DayRow[]) {
 }
 
 async function computeCharts(since: Date) {
-  // NOTE: Prisma stores SQLite DateTime as INTEGER epoch-milliseconds,
-  // so raw SQL must convert with /1000,'unixepoch' and compare numerically.
-  const sinceMs = since.getTime();
-
+  // NOTE: Prisma maps DateTime to Postgres `timestamp(3)`, so raw SQL buckets
+  // with to_char() and compares against a bound Date directly.
   const [
     leadDayRows,
     meetingDayRows,
@@ -123,12 +121,12 @@ async function computeCharts(since: Date) {
     revenueThisPeriod,
     revenuePrevPeriod,
   ] = await Promise.all([
-    prisma.$queryRaw<DayRow[]>`SELECT date(createdAt/1000, 'unixepoch') as day, COUNT(*) as count FROM Lead WHERE createdAt >= ${sinceMs} GROUP BY day ORDER BY day`,
-    prisma.$queryRaw<DayRow[]>`SELECT date(createdAt/1000, 'unixepoch') as day, COUNT(*) as count FROM Meeting WHERE createdAt >= ${sinceMs} GROUP BY day ORDER BY day`,
+    prisma.$queryRaw<DayRow[]>`SELECT to_char("createdAt", 'YYYY-MM-DD') as day, COUNT(*)::int as count FROM "Lead" WHERE "createdAt" >= ${since} GROUP BY day ORDER BY day`,
+    prisma.$queryRaw<DayRow[]>`SELECT to_char("createdAt", 'YYYY-MM-DD') as day, COUNT(*)::int as count FROM "Meeting" WHERE "createdAt" >= ${since} GROUP BY day ORDER BY day`,
     prisma.lead.groupBy({ by: ["status"], _count: { _all: true }, where: { createdAt: { gte: since } } }),
     prisma.lead.groupBy({ by: ["source"], _count: { _all: true }, where: { createdAt: { gte: since } } }),
     prisma.task.groupBy({ by: ["status"], _count: { _all: true } }),
-    prisma.$queryRaw<MonthRow[]>`SELECT strftime('%Y-%m', createdAt/1000, 'unixepoch') as month, SUM(revenue) as revenue, SUM(actualCost) as cost FROM Project WHERE createdAt >= ${sinceMs} GROUP BY month ORDER BY month`,
+    prisma.$queryRaw<MonthRow[]>`SELECT to_char("createdAt", 'YYYY-MM') as month, SUM("revenue") as revenue, SUM("actualCost") as cost FROM "Project" WHERE "createdAt" >= ${since} GROUP BY month ORDER BY month`,
     prisma.lead.count({ where: { createdAt: { gte: since } } }),
     prisma.lead.count({ where: { createdAt: { lt: since, gte: new Date(since.getTime() - (Date.now() - since.getTime())) } } }),
     prisma.lead.count({ where: { status: "CONVERTED", createdAt: { gte: since } } }),

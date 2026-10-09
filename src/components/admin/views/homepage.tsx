@@ -45,6 +45,7 @@ import { TRUST_BADGE_ICONS } from "@/components/site/trust-badges";
 import { SectionContentEditor } from "@/components/admin/views/section-content";
 import { sectionIcon } from "@/components/admin/views/section-icons";
 import { Type } from "lucide-react";
+import { uploadMediaFile } from "@/lib/upload-client";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -363,13 +364,10 @@ function ItemManager({
   const uploadImage = async (field: string, file: File) => {
     setUploadingField(field);
     try {
-      const formData = new FormData();
-      formData.set("file", file);
-      formData.set("altText", editor.values.name || editor.values.label || editor.values.title || "");
-      const res = await fetch("/api/media", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok || !data.media?.url) throw new Error(data.error || "Upload failed");
-      setEditor((state) => ({ ...state, values: { ...state.values, [field]: data.media.url } }));
+      const uploaded = await uploadMediaFile(file, {
+        altText: editor.values.name || editor.values.label || editor.values.title || "",
+      });
+      setEditor((state) => ({ ...state, values: { ...state.values, [field]: uploaded.url } }));
     } catch (error) {
       console.error(error);
     } finally {

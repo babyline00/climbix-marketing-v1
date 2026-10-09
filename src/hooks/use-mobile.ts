@@ -2,18 +2,33 @@ import * as React from "react"
 
 const MOBILE_BREAKPOINT = 768
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+const QUERY = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`
 
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
+function subscribe(onChange: () => void) {
+  const mql = window.matchMedia(QUERY)
+  mql.addEventListener("change", onChange)
+  return () => mql.removeEventListener("change", onChange)
+}
 
-  return !!isMobile
+/**
+ * The server has no viewport, so it always reports the desktop branch and the
+ * real value is adopted on the client's first render. Passing a distinct
+ * getServerSnapshot is what keeps that swap from being a hydration mismatch.
+ */
+function getServerSnapshot() {
+  return false
+}
+
+/**
+ * useSyncExternalStore rather than useState + useEffect: the previous version
+ * seeded state from an effect, which meant every consumer rendered `false`
+ * once and then re-rendered after mount. Subscribing to matchMedia directly
+ * gives the same value in the first client render.
+ */
+export function useIsMobile(): boolean {
+  return React.useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(QUERY).matches,
+    getServerSnapshot
+  )
 }

@@ -66,6 +66,110 @@ function fmtDateTime(iso: string): string {
   }
 }
 
+type Tone = "overdue" | "done";
+
+/**
+ * Row and Section are declared at module scope on purpose. Defining them inside
+ * AdminFollowups would mint a brand-new component function on every render, and
+ * React treats a changed component type as a different element — it would
+ * unmount and remount the entire list, destroying focus and any open state.
+ */
+function FollowUpRowItem({
+  f,
+  tone,
+  canManage,
+  onMarkDone,
+  onRemove,
+}: {
+  f: FollowUpRow;
+  tone?: Tone;
+  canManage: boolean;
+  onMarkDone: (f: FollowUpRow) => void;
+  onRemove: (f: FollowUpRow) => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
+      <div className="size-9 rounded-xl bg-slate-100 flex items-center justify-center text-base shrink-0">
+        {TYPE_ICONS[f.type] ?? "📌"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm font-medium truncate ${tone === "done" ? "line-through text-muted-foreground" : ""}`}>
+          {f.lead?.name ?? f.lead?.email ?? "Lead"}
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            {f.lead?.company || f.lead?.email}
+          </span>
+        </p>
+        <p className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
+          <span className={tone === "overdue" ? "text-rose-600 font-semibold" : ""}>
+            {fmtDateTime(f.scheduledAt)}
+          </span>
+          <span>· {f.type}</span>
+          {f.staffName && <span>· {f.staffName}</span>}
+          {f.notes && <span className="truncate max-w-48">· {f.notes}</span>}
+        </p>
+      </div>
+      {canManage && !f.done && (
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="sm" className="size-8 p-0 text-emerald-600 hover:bg-emerald-50" onClick={() => onMarkDone(f)} aria-label="Mark done">
+            <Check className="size-4" />
+          </Button>
+          <Button variant="ghost" size="sm" className="size-8 p-0 text-rose-600 hover:bg-rose-50" onClick={() => onRemove(f)} aria-label="Delete">
+            <Trash2 className="size-3.5" />
+          </Button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function FollowUpSection({
+  icon: Icon,
+  title,
+  rows,
+  tone,
+  empty,
+  canManage,
+  onMarkDone,
+  onRemove,
+}: {
+  icon: typeof CalendarClock;
+  title: string;
+  rows: FollowUpRow[];
+  tone?: Tone;
+  empty: string;
+  canManage: boolean;
+  onMarkDone: (f: FollowUpRow) => void;
+  onRemove: (f: FollowUpRow) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <Icon className={`size-4 ${tone === "overdue" ? "text-rose-500" : "text-brand-600"}`} />
+          {title}
+        </h3>
+        <Badge variant="outline" className="text-[10px]">{rows.length}</Badge>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul>
+          {rows.map((f) => (
+            <FollowUpRowItem
+              key={f.id}
+              f={f}
+              tone={tone}
+              canManage={canManage}
+              onMarkDone={onMarkDone}
+              onRemove={onRemove}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function AdminFollowups({ user }: { user: SessionUser }) {
   const [groups, setGroups] = React.useState<{ today: FollowUpRow[]; overdue: FollowUpRow[]; upcoming: FollowUpRow[]; done: FollowUpRow[] }>({
     today: [], overdue: [], upcoming: [], done: [],
@@ -137,62 +241,6 @@ export function AdminFollowups({ user }: { user: SessionUser }) {
     load();
   };
 
-  const Row = ({ f, tone }: { f: FollowUpRow; tone?: "overdue" | "done" }) => (
-    <li className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
-      <div className="size-9 rounded-xl bg-slate-100 flex items-center justify-center text-base shrink-0">
-        {TYPE_ICONS[f.type] ?? "📌"}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className={`text-sm font-medium truncate ${tone === "done" ? "line-through text-muted-foreground" : ""}`}>
-          {f.lead?.name ?? f.lead?.email ?? "Lead"}
-          <span className="ml-2 text-xs font-normal text-muted-foreground">
-            {f.lead?.company || f.lead?.email}
-          </span>
-        </p>
-        <p className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
-          <span className={tone === "overdue" ? "text-rose-600 font-semibold" : ""}>
-            {fmtDateTime(f.scheduledAt)}
-          </span>
-          <span>· {f.type}</span>
-          {f.staffName && <span>· {f.staffName}</span>}
-          {f.notes && <span className="truncate max-w-48">· {f.notes}</span>}
-        </p>
-      </div>
-      {canManage && !f.done && (
-        <div className="flex items-center gap-1 shrink-0">
-          <Button variant="ghost" size="sm" className="size-8 p-0 text-emerald-600 hover:bg-emerald-50" onClick={() => markDone(f)} aria-label="Mark done">
-            <Check className="size-4" />
-          </Button>
-          <Button variant="ghost" size="sm" className="size-8 p-0 text-rose-600 hover:bg-rose-50" onClick={() => remove(f)} aria-label="Delete">
-            <Trash2 className="size-3.5" />
-          </Button>
-        </div>
-      )}
-    </li>
-  );
-
-  const Section = ({
-    icon: Icon, title, rows, tone, empty,
-  }: {
-    icon: typeof CalendarClock; title: string; rows: FollowUpRow[];
-    tone?: "overdue" | "done"; empty: string;
-  }) => (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/60 flex items-center justify-between">
-        <h3 className="font-semibold text-sm flex items-center gap-2">
-          <Icon className={`size-4 ${tone === "overdue" ? "text-rose-500" : "text-brand-600"}`} />
-          {title}
-        </h3>
-        <Badge variant="outline" className="text-[10px]">{rows.length}</Badge>
-      </div>
-      {rows.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">{empty}</p>
-      ) : (
-        <ul>{rows.map((f) => <Row key={f.id} f={f} tone={tone} />)}</ul>
-      )}
-    </div>
-  );
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -218,12 +266,12 @@ export function AdminFollowups({ user }: { user: SessionUser }) {
       ) : (
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="space-y-4">
-            <Section icon={AlarmClock} title="Overdue" rows={groups.overdue} tone="overdue" empty="Nothing overdue — great job!" />
-            <Section icon={CalendarClock} title="Today" rows={groups.today} empty="No follow-ups scheduled for today." />
+            <FollowUpSection icon={AlarmClock} title="Overdue" rows={groups.overdue} tone="overdue" empty="Nothing overdue — great job!" canManage={canManage} onMarkDone={markDone} onRemove={remove} />
+            <FollowUpSection icon={CalendarClock} title="Today" rows={groups.today} empty="No follow-ups scheduled for today." canManage={canManage} onMarkDone={markDone} onRemove={remove} />
           </div>
           <div className="space-y-4">
-            <Section icon={CalendarDays} title="Upcoming" rows={groups.upcoming} empty="No upcoming follow-ups." />
-            <Section icon={History} title="Recently completed" rows={groups.done} tone="done" empty="Nothing completed yet." />
+            <FollowUpSection icon={CalendarDays} title="Upcoming" rows={groups.upcoming} empty="No upcoming follow-ups." canManage={canManage} onMarkDone={markDone} onRemove={remove} />
+            <FollowUpSection icon={History} title="Recently completed" rows={groups.done} tone="done" empty="Nothing completed yet." canManage={canManage} onMarkDone={markDone} onRemove={remove} />
           </div>
         </div>
       )}

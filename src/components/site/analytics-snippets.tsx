@@ -28,7 +28,6 @@ function loadScript(src: string) {
 }
 
 function runInline(fn: (...args: any[]) => void, ...args: unknown[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fnAny = fn as (...a: any[]) => void;
   const el = document.createElement("script");
   el.textContent = `(${fnAny.toString()})(${args.map((a) => JSON.stringify(a)).join(",")});`;
@@ -47,10 +46,11 @@ function loadTags(cfg: TagConfig) {
     loadScript(`https://www.googletagmanager.com/gtag/js?id=${id}`);
     runInline(
       (gid: string, consentMode: boolean) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any;
         w.dataLayer = w.dataLayer || [];
         w.gtag = function () {
+          // Vendored gtag snippet: the queue consumer reads the raw Arguments
+          // object, so a rest-parameter rewrite would change the payload.
           // eslint-disable-next-line prefer-rest-params
           w.dataLayer.push(arguments);
         };
@@ -82,7 +82,6 @@ function loadTags(cfg: TagConfig) {
     const id = cfg.gtmId;
     loadScript(`https://www.googletagmanager.com/gtm.js?id=${id}&l=dataLayer`);
     runInline(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
       w.dataLayer = w.dataLayer || [];
       w.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
@@ -100,11 +99,13 @@ function loadTags(cfg: TagConfig) {
     const pixel = cfg.fbpPixelId;
     loadScript("https://connect.facebook.net/en_US/fbevents.js");
     runInline((pid: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const f = window as any;
       if (f.fbq) return;
       f.fbq = function () {
-        // eslint-disable-next-line prefer-rest-params
+        // Vendored Meta pixel snippet. Both rewrites are unsafe here: the
+        // explicit .apply(f.fbq, …) is what binds `this` to fbq when
+        // callMethod runs, and the ternary is a statement, not an expression.
+        /* eslint-disable-next-line prefer-rest-params, prefer-spread, @typescript-eslint/no-unused-expressions -- load-bearing vendor snippet */
         f.fbq.callMethod ? f.fbq.callMethod.apply(f.fbq, arguments) : f.fbq.queue.push(arguments);
       };
       if (!f._fbq) f._fbq = f.fbq;
@@ -120,9 +121,11 @@ function loadTags(cfg: TagConfig) {
   if (cfg.clarityId) {
     const cid = cfg.clarityId;
     runInline((id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c = window as any;
       c.clarity = c.clarity || function () {
+        // Vendored Microsoft Clarity snippet — clarityq entries are consumed as
+        // Arguments objects, so a rest-parameter rewrite changes the shape.
+        // eslint-disable-next-line prefer-rest-params
         (c.clarityq = c.clarityq || []).push(arguments);
       };
     }, cid);
@@ -132,9 +135,11 @@ function loadTags(cfg: TagConfig) {
   if (cfg.hotjarSiteId) {
     const hjId = Number(cfg.hotjarSiteId);
     runInline((n: number) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const h = window as any;
       h.hj = h.hj || function () {
+        // Vendored Hotjar snippet — hjq entries are consumed as Arguments
+        // objects, so a rest-parameter rewrite changes the shape.
+        // eslint-disable-next-line prefer-rest-params
         (h.hjq = h.hjq || []).push(arguments);
       };
       h._hjSettings = { hjid: n, hjsv: 6 };
@@ -145,7 +150,6 @@ function loadTags(cfg: TagConfig) {
   if (cfg.tiktokPixelId) {
     const pid = cfg.tiktokPixelId;
     runInline((id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
       w.ttq = w.ttq || [];
       w.ttq.push(["init", id]);
@@ -158,7 +162,6 @@ function loadTags(cfg: TagConfig) {
     const pid = cfg.linkedinPartnerId;
     loadScript("https://snap.licdn.com/li.lms-analytics/insight.min.js");
     runInline((id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
       w._linkedin_partner_id = id;
       w._linkedin_data_partner_ids = w._linkedin_data_partner_ids || [];
@@ -169,9 +172,11 @@ function loadTags(cfg: TagConfig) {
   if (cfg.pinterestTagId) {
     const pid = cfg.pinterestTagId;
     runInline((id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any;
       w.pintrk = w.pintrk || function () {
+        // Vendored Pinterest tag snippet — pintrk.q entries are consumed as
+        // Arguments objects, so a rest-parameter rewrite changes the shape.
+        // eslint-disable-next-line prefer-rest-params
         (w.pintrk.q = w.pintrk.q || []).push(arguments);
       };
       w.pintrk("load", id);

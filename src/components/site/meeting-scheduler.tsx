@@ -146,6 +146,8 @@ export const TIME_SLOTS = [
   "17:30",
 ];
 
+const TITLE_ID = "meeting-scheduler-title";
+
 export function MeetingScheduler({
   open,
   onOpenChange,
@@ -168,8 +170,15 @@ export function MeetingScheduler({
 
   const dates = React.useMemo(() => getAvailableDates(), []);
 
-  // Detect visitor timezone once when the modal opens
-  React.useEffect(() => {
+  // Seeding happens during render, not in an effect. React discards this render
+  // and immediately re-runs with the updated state, so the modal never paints a
+  // stale timezone or service — the effect version showed one frame of the
+  // previous session's values. The token changes on every open and whenever the
+  // configured service changes, which is exactly when a re-seed is wanted.
+  const seedToken = `${open ? "open" : "closed"}:${config?.service ?? ""}`;
+  const [lastSeedToken, setLastSeedToken] = React.useState(seedToken);
+  if (seedToken !== lastSeedToken) {
+    setLastSeedToken(seedToken);
     if (open) {
       setForm((f) => ({
         ...f,
@@ -177,7 +186,44 @@ export function MeetingScheduler({
         service: config?.service || "General Strategy Call",
       }));
     }
-  }, [open, config?.service]);
+  }
+
+  // Move focus into the dialog when it opens and hand it back to whatever was
+  // focused before on close. This is a hand-rolled modal rather than a Radix
+  // Dialog, so it does not get focus management for free.
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => previouslyFocused?.focus?.();
+  }, [open]);
+
+  // Trap Tab inside the dialog so keyboard users cannot tab into the page
+  // behind it while it is open.
+  React.useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   // Close on Escape only when no Radix Select dropdown is open (Select handles its own Escape)
   React.useEffect(() => {
@@ -261,6 +307,11 @@ export function MeetingScheduler({
 
           {/* Modal */}
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={TITLE_ID}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -274,7 +325,7 @@ export function MeetingScheduler({
                   <CalendarCheck className="size-4 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold leading-tight">
+                  <h2 id={TITLE_ID} className="text-base font-semibold leading-tight">
                     {state === "success"
                       ? "Meeting scheduled!"
                       : "Schedule a strategy call"}
@@ -455,12 +506,17 @@ export function MeetingScheduler({
                       <Label className="text-xs">Service of interest</Label>
                       <Select
                         value={form.service}
-                        onValueChange={(v) =>
-                          setForm({ ...form, service: v })
-                        }
+                        onValueChange={(v) => {
+                          // Radix's hidden native select emits a spurious ""
+                          // when the value changes while the portalled options are
+                          // unmounted — which is exactly what happens when the
+                          // modal seeds the service on open. Dropping empty keeps
+                          // the seeded value instead of blanking it.
+                          if (v) setForm({ ...form, service: v });
+                        }}
                       >
                         <SelectTrigger className="h-9 text-sm">
-                          <SelectValue />
+                          <SelectValue>{form.service}</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {SERVICES.map((s) => (
@@ -526,12 +582,13 @@ export function MeetingScheduler({
                         <Label className="text-xs">Timezone</Label>
                         <Select
                           value={form.timezone}
-                          onValueChange={(v) =>
-                            setForm({ ...form, timezone: v })
-                          }
+                          onValueChange={(v) => {
+                            // See the service select above — same spurious "".
+                            if (v) setForm({ ...form, timezone: v });
+                          }}
                         >
                           <SelectTrigger className="h-9 text-sm">
-                            <SelectValue />
+                            <SelectValue>{form.timezone}</SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {TIMEZONES.map((tz) => (

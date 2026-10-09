@@ -32,6 +32,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { uploadMediaFile } from "@/lib/upload-client";
 import {
   Select,
   SelectContent,
@@ -553,13 +554,10 @@ function PopupManager() {
   const uploadPopupImage = async (file: File) => {
     setUploadingImage(true);
     try {
-      const formData = new FormData();
-      formData.set("file", file);
-      formData.set("altText", form.title || "Announcement image");
-      const res = await fetch("/api/media", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok || !data.media?.url) throw new Error(data.error || "Upload failed");
-      setForm((state) => ({ ...state, imageUrl: data.media.url }));
+      const uploaded = await uploadMediaFile(file, {
+        altText: form.title || "Announcement image",
+      });
+      setForm((state) => ({ ...state, imageUrl: uploaded.url }));
     } catch (error) {
       console.error(error);
     } finally {

@@ -132,10 +132,15 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
   const [deleteTarget, setDeleteTarget] = React.useState<Doc | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
-  // Debounced search
+  // Debounced search. The page reset rides along with the debounced value, since
+  // that is the moment the filter genuinely changes — an effect keyed on
+  // debouncedQ rendered once with the new filter and the old page number.
   const [debouncedQ, setDebouncedQ] = React.useState("");
   React.useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedQ(query), 350);
+    const t = window.setTimeout(() => {
+      setDebouncedQ(query);
+      setPage(1);
+    }, 350);
     return () => window.clearTimeout(t);
   }, [query]);
 
@@ -168,21 +173,37 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
     }
   }, [page, categoryFilter, relatedFilter, debouncedQ]);
 
+  // Filter changes reset to page 1 in the same event that applies them.
+  const applyCategoryFilter = (value: string) => {
+    setCategoryFilter(value);
+    setPage(1);
+  };
+
+  const applyRelatedFilter = (value: string) => {
+    setRelatedFilter(value);
+    setPage(1);
+  };
+
   React.useEffect(() => {
     load();
   }, [load]);
 
-  // Reset to first page when filters change
-  React.useEffect(() => {
-    setPage(1);
-  }, [categoryFilter, relatedFilter, debouncedQ]);
+  // Clearing the loaded options happens where they are invalidated — on close and
+  // on type change — not in the loader effect. The effect version left the
+  // previous type's options on screen for a render after switching.
+  const closeUpload = () => {
+    setUploadOpen(false);
+    setOptions([]);
+  };
+
+  const applyRelatedType = (value: string) => {
+    setForm((f) => ({ ...f, relatedType: value, relatedId: "" }));
+    setOptions([]);
+  };
 
   // Load related-entity options when type changes (upload dialog)
   React.useEffect(() => {
-    if (!uploadOpen || form.relatedType === "none") {
-      setOptions([]);
-      return;
-    }
+    if (!uploadOpen || form.relatedType === "none") return;
     let cancelled = false;
     const loadOptions = async () => {
       setOptionsLoading(true);
@@ -243,7 +264,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
       const res = await fetch("/api/documents", { method: "POST", body: fd });
       const data = await res.json();
       if (res.ok) {
-        setUploadOpen(false);
+        closeUpload();
         load();
       } else {
         setUploadError(data.error ?? "Upload failed");
@@ -370,7 +391,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
           <Label>Linked to</Label>
           <Select
             value={form.relatedType}
-            onValueChange={(v) => setForm((f) => ({ ...f, relatedType: v, relatedId: "" }))}
+            onValueChange={applyRelatedType}
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -432,7 +453,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
               className="pl-9"
             />
           </div>
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <Select value={categoryFilter} onValueChange={applyCategoryFilter}>
             <SelectTrigger className="w-full sm:w-40">
               <SelectValue />
             </SelectTrigger>
@@ -445,7 +466,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
               ))}
             </SelectContent>
           </Select>
-          <Select value={relatedFilter} onValueChange={setRelatedFilter}>
+          <Select value={relatedFilter} onValueChange={applyRelatedFilter}>
             <SelectTrigger className="w-full sm:w-40">
               <SelectValue />
             </SelectTrigger>
@@ -671,7 +692,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
       )}
 
       {/* Upload dialog */}
-      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+      <Dialog open={uploadOpen} onOpenChange={(o) => (o ? setUploadOpen(true) : closeUpload())}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Upload Document</DialogTitle>
@@ -686,7 +707,7 @@ export function AdminDocuments({ user }: { user: SessionUser }) {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUploadOpen(false)} disabled={uploading}>
+            <Button variant="outline" onClick={closeUpload} disabled={uploading}>
               Cancel
             </Button>
             <Button onClick={submitUpload} disabled={uploading} className="bg-brand-600 hover:bg-brand-700 text-white">

@@ -46,14 +46,17 @@ const riseUp = {
 };
 
 export function ServiceDetail({ service }: { service: ServiceContent }) {
+  // getServiceIcon reads from SERVICE_ICONS, a module-level Record built once
+  // from the lucide imports. The returned reference is therefore identical on
+  // every render, so <Icon /> is a stable element type and React will not
+  // remount it. The static-components rule cannot see through the lookup, so it
+  // is silenced at the JSX usage below rather than worked around.
   const Icon = getServiceIcon(service.icon);
   const { openScheduler } = useScheduler();
 
   React.useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   }, [service.slug]);
-
-  if (!Icon) return null;
 
   return (
     <div>
@@ -94,6 +97,8 @@ export function ServiceDetail({ service }: { service: ServiceContent }) {
               animate="show"
               className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 backdrop-blur px-4 py-1.5 text-xs font-medium text-brand-200"
             >
+              {/* Stable reference from the static SERVICE_ICONS map — see the note above Icon. */}
+              {/* eslint-disable-next-line react-hooks/static-components */}
               <Icon className="size-3.5" />
               {service.hero.eyebrow}
             </motion.div>

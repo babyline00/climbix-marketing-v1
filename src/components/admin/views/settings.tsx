@@ -228,9 +228,11 @@ export function AdminSettings({ user }: { user: SessionUser }) {
     }
   }, []);
 
+  // `loading` is only read below the !canView early return, so when access is
+  // denied there is nothing to clear — load() owns the flag. Resetting it here
+  // was dead work that also cost an extra render.
   React.useEffect(() => {
     if (canView) load();
-    else setLoading(false);
   }, [canView, load]);
 
   if (!canView) {

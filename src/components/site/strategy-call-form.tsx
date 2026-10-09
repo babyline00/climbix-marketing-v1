@@ -49,17 +49,34 @@ export function StrategyCallForm({ id }: { id?: string }) {
     service: "General Strategy Call",
     date: "",
     time: "",
-    timezone: "UTC",
     notes: "",
     website: "",
   });
 
-  const dates = React.useMemo(() => getAvailableDates(), []);
-
-  // Detect visitor timezone on mount (client only)
+  // The visitor's zone cannot be known on the server, so it is read after
+  // hydration. This is deliberately a state update in an effect rather than a
+  // lazy initializer or an external-store read: Intl reports the *server's*
+  // zone during SSR, so a lazy initializer would render the visitor's zone on
+  // the first client pass and mismatch the server markup, and a store with
+  // nothing to subscribe to never refreshes off its pinned snapshot.
+  const [detectedTimezone, setDetectedTimezone] = React.useState("UTC");
   React.useEffect(() => {
-    setForm((f) => ({ ...f, timezone: detectTimezone() }));
+    setDetectedTimezone(detectTimezone());
   }, []);
+
+  // An explicit choice always wins over the detected zone.
+  const [timezoneChoice, setTimezoneChoice] = React.useState<string | null>(null);
+  // Radix Select fires onValueChange("") once on mount, before the portalled
+  // SelectContent has registered its items, so the current value looks
+  // unmatched. Storing that empty string wiped the detected zone — the trigger
+  // rendered blank and the form posted `timezone: ""`, which files the booking
+  // in UTC. An empty value is never a legitimate choice here, so drop it.
+  const pickTimezone = React.useCallback((value: string) => {
+    if (value) setTimezoneChoice(value);
+  }, []);
+  const timezone = timezoneChoice ?? detectedTimezone;
+
+  const dates = React.useMemo(() => getAvailableDates(), []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,7 +92,7 @@ export function StrategyCallForm({ id }: { id?: string }) {
       const res = await fetch("/api/meetings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, source: "hero-strategy-call" }),
+        body: JSON.stringify({ ...form, timezone, source: "hero-strategy-call" }),
       });
 
       if (!res.ok) {
@@ -114,7 +131,7 @@ export function StrategyCallForm({ id }: { id?: string }) {
           </span>{" "}
           at{" "}
           <span className="font-semibold text-white">{form.time}</span> (
-          {form.timezone.split(" ")[0]}). A confirmation email is on its way to{" "}
+          {timezone.split(" ")[0]}). A confirmation email is on its way to{" "}
           <span className="font-semibold text-white">{form.email}</span>.
         </p>
         <ul className="mt-5 space-y-2 text-left text-sm text-white/80 max-w-xs mx-auto">
@@ -226,10 +243,14 @@ export function StrategyCallForm({ id }: { id?: string }) {
           <Label className="text-xs text-white/70">Service of interest</Label>
           <Select
             value={form.service}
-            onValueChange={(v) => setForm({ ...form, service: v })}
+            onValueChange={(v) => {
+              // Same mount-time empty emission as the timezone select; an empty
+              // service is never a real choice and would post as "".
+              if (v) setForm((f) => ({ ...f, service: v }));
+            }}
           >
             <SelectTrigger className="h-10 text-sm bg-white/[0.07] border-white/15 text-white">
-              <SelectValue />
+              <SelectValue>{form.service}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {SERVICES.map((s) => (
@@ -289,11 +310,11 @@ export function StrategyCallForm({ id }: { id?: string }) {
         <div className="space-y-1.5">
           <Label className="text-xs text-white/70">Timezone</Label>
           <Select
-            value={form.timezone}
-            onValueChange={(v) => setForm({ ...form, timezone: v })}
+            value={timezone}
+            onValueChange={pickTimezone}
           >
             <SelectTrigger className="h-10 text-sm bg-white/[0.07] border-white/15 text-white">
-              <SelectValue />
+              <SelectValue>{timezone}</SelectValue>
             </SelectTrigger>
             <SelectContent className="max-h-64">
               {TIMEZONES.map((tz) => (

@@ -33,6 +33,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { uploadMediaFile } from "@/lib/upload-client";
+import { toast } from "sonner";
 
 type RichTextEditorProps = {
   value: string; // HTML content
@@ -155,18 +157,12 @@ export function RichTextEditor({
   };
 
   const onImageUpload = async (file: File) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("title", file.name);
-
     try {
-      const res = await fetch("/api/media", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.media) {
-        editor.chain().focus().setImage({ src: data.media.url }).run();
-      }
+      const media = await uploadMediaFile(file, { title: file.name });
+      editor.chain().focus().setImage({ src: media.url }).run();
     } catch (e) {
       console.error(e);
+      toast.error(e instanceof Error ? e.message : "Image upload failed");
     }
   };
 

@@ -127,10 +127,18 @@ export function BlogView({
   const POSTS_PER_PAGE = 6;
   const [currentPage, setCurrentPage] = React.useState(1);
 
-  // Reset page when search or category changes
-  React.useEffect(() => {
+  // Changing the filters resets the page in the same event rather than in an
+  // effect. The effect version rendered once with the new filters but the old
+  // page number, which can briefly page past the end of the result set.
+  const applySearch = (value: string) => {
+    setSearch(value);
     setCurrentPage(1);
-  }, [search, category]);
+  };
+
+  const applyCategory = (value: string) => {
+    setCategory(value);
+    setCurrentPage(1);
+  };
 
   const featured = filtered[0];
   const rest = filtered.slice(1);
@@ -210,11 +218,11 @@ export function BlogView({
               <Input
                 placeholder="Search articles..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => applySearch(e.target.value)}
                 className="pl-9"
               />
             </div>
-            <Select value={category} onValueChange={setCategory}>
+            <Select value={category} onValueChange={applyCategory}>
               <SelectTrigger className="w-full sm:w-52">
                 <SelectValue />
               </SelectTrigger>

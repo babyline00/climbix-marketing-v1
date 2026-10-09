@@ -95,10 +95,55 @@ export type ItemsSectionContent = {
   intro: string;
 };
 
+/**
+ * Sections whose items render an uploaded image at an admin-chosen, uniform
+ * size. The height is stored as a string because section content is JSON that
+ * round-trips through free-text form fields.
+ */
+export type ImageStripContent = ItemsSectionContent & {
+  imageHeight: string;
+  /**
+   * Whether the item's text label is shown next to its image. Stored as a
+   * string because section content is JSON that round-trips through free-text
+   * form fields; anything other than "false" is treated as on.
+   */
+  showText: string;
+};
+
+/**
+ * Resolve the text-label toggle. Defaults to on, so existing sections that
+ * predate this field keep rendering their labels.
+ */
+export function resolveShowText(raw: unknown): boolean {
+  return String(raw ?? "true") !== "false";
+}
+
+/** Guard rails for the image height, in CSS pixels. */
+export const IMAGE_HEIGHT_MIN = 14;
+export const IMAGE_HEIGHT_MAX = 96;
+export const DEFAULT_IMAGE_HEIGHT = 32;
+
+/** Presets offered in the admin size control. */
+export const IMAGE_HEIGHT_PRESETS = [16, 20, 24, 28, 32, 40, 48, 64,85,100,128];
+
+/**
+ * Coerce an admin-entered height into a safe pixel value. Section content is
+ * edited as free text, so this is the only thing standing between a typo and a
+ * zero-height or 100000px-tall logo strip.
+ */
+export function clampImageHeight(
+  raw: unknown,
+  fallback: number = DEFAULT_IMAGE_HEIGHT
+): number {
+  const n = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(IMAGE_HEIGHT_MAX, Math.max(IMAGE_HEIGHT_MIN, Math.round(n)));
+}
+
 export type SectionContentMap = {
   hero: HeroContent;
-  "trust-badges": ItemsSectionContent;
-  "client-logos": ItemsSectionContent;
+  "trust-badges": ImageStripContent;
+  "client-logos": ImageStripContent;
   offers: ItemsSectionContent;
   problem: ProblemContent;
   services: ServicesContent;
@@ -139,12 +184,16 @@ export const SECTION_CONTENT_DEFAULTS: SectionContentMap = {
     title: "Recognized. Certified. Proven.",
     intro:
       "We hold ourselves to the same standards we hold your campaigns to — which is why teams across 18+ countries trust Climbix with their growth.",
+    imageHeight: "20",
+    showText: "true",
   },
   "client-logos": {
     eyebrow: "Client roster",
     title: "Companies that grow with Climbix",
     intro:
       "From venture-backed startups to established enterprises — a snapshot of the brands we partner with.",
+    imageHeight: "32",
+    showText: "true",
   },
   offers: {
     eyebrow: "Current offers",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Bot, Mic, MicOff, MessageCircle, RefreshCw, Send, Volume2, VolumeX, X } from "lucide-react";
 
 interface ChatMessage {
@@ -36,6 +36,31 @@ const STORAGE_KEY = "climbix-agent-chat-v1";
 
 function makeWelcome(cfg: AgentPublicConfig): ChatMessage {
   return { role: "assistant", content: cfg.welcome || DEFAULT_CONFIG.welcome };
+}
+
+/**
+ * Restored during the first render rather than in a mount effect. The panel is
+ * gated behind `open`, which starts false, so this list is never part of the
+ * server HTML and reading localStorage in the initializer cannot mismatch
+ * hydration.
+ */
+function readStoredHistory(): ChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved) as ChatMessage[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
+    return parsed.slice(-40);
+  } catch {
+    /* ignore corrupted history */
+    return [];
+  }
+}
+
+/** Mic support is a fixed browser capability, so there is nothing to subscribe to. */
+function subscribeToNothing() {
+  return () => {};
 }
 
 // ---- Minimal Web Speech API typings (not in all TS libs) ----
@@ -81,11 +106,22 @@ export function VoiceAgentWidget() {
   const [config, setConfig] = useState<AgentPublicConfig>(DEFAULT_CONFIG);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [makeWelcome(DEFAULT_CONFIG)]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    makeWelcome(DEFAULT_CONFIG),
+    ...readStoredHistory(),
+  ]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [muted, setMuted] = useState(false);
-  const [micSupported, setMicSupported] = useState(true);
+  // Read as an external store with a `true` server snapshot, so the optimistic
+  // mic button the server renders survives hydration and is corrected right
+  // after — the same outcome as the old seed-then-fix-up effect, without the
+  // extra render.
+  const micSupported = useSyncExternalStore(
+    subscribeToNothing,
+    () => getRecognitionCtor() !== null,
+    () => true
+  );
   const [interim, setInterim] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -132,20 +168,9 @@ export function VoiceAgentWidget() {
     };
   }, []);
 
-  // Restore conversation history + detect mic support.
+  // Teardown only — restoring history and detecting mic support now happen during
+  // the first render, so this effect carries no setState.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as ChatMessage[];
-        if (Array.isArray(parsed) && parsed.length) {
-          setMessages((prev) => [prev[0], ...parsed.slice(-40)]);
-        }
-      }
-    } catch {
-      /* ignore corrupted history */
-    }
-    setMicSupported(getRecognitionCtor() !== null);
     return () => {
       recognitionRef.current?.abort();
       audioRef.current?.pause();

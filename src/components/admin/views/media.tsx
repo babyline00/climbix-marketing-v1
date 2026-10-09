@@ -15,6 +15,8 @@ import {
   X,
   Download,
 } from "lucide-react";
+import { toast } from "sonner";
+import { uploadMediaFile } from "@/lib/upload-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,18 +83,12 @@ export function AdminMedia() {
 
     try {
       for (const file of Array.from(files)) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("title", file.name.replace(/\.[^.]+$/, ""));
-
-        await fetch("/api/media", {
-          method: "POST",
-          body: formData,
-        });
+        await uploadMediaFile(file, { title: file.name.replace(/\.[^.]+$/, "") });
       }
       await fetchMedia();
     } catch (e) {
       console.error(e);
+      toast.error(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

@@ -93,6 +93,10 @@ function Carousel({
     setApi(api)
   }, [api, setApi])
 
+  // Embla is an external library, not React state. Its api is only available after
+  // the plugin mounts, so syncing canScrollPrev/canScrollNext has to happen once
+  // that happens — the arrows start disabled and this call is what enables them.
+  // It is a one-shot subscription, not a render-driven state update.
   React.useEffect(() => {
     if (!api) return
     onSelect(api)
