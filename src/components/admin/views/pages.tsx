@@ -20,11 +20,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import {
-  buildDocument,
   expandShortcodes,
   MAX_PAGE_CONTENT_CHARS,
   SHORTCODE_REFERENCE,
 } from "@/lib/shortcodes";
+import { checkJsonLd, JSON_LD_PLACEHOLDER } from "@/lib/jsonld";
+import { DocumentPage } from "@/components/site/document-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -133,15 +134,15 @@ export function AdminPages() {
   const [editor, setEditor] = React.useState<EditorState>(DEFAULT_STATE);
 
   /**
-   * Preview runs through the same shortcode expander and document builder as
-   * the public renderer, so what an author sees here is what visitors get.
-   * Media lookups are skipped (no server access from the browser) — asset
-   * shortcodes fall back to their visible "[not found]" placeholder, which is
-   * a useful signal rather than a broken image.
+   * Preview runs through the same shortcode expander and the same renderer as
+   * the public page, so what an author sees here is what visitors get — React
+   * shortcodes included. Media lookups are skipped (no server access from the
+   * browser) so asset shortcodes show their visible "[not found]" placeholder,
+   * which is a useful signal rather than a broken image.
    */
   const documentPreview = React.useMemo(() => {
     if (editor.renderMode !== "document") return null;
-    const expanded = expandShortcodes(
+    return expandShortcodes(
       editor.content,
       {
         slug: editor.slug || "preview",
@@ -151,12 +152,12 @@ export function AdminPages() {
       },
       {}
     );
-    return buildDocument({
-      html: expanded,
-      title: editor.title || "Page preview",
-      token: "preview",
-    });
   }, [editor.content, editor.renderMode, editor.title, editor.slug]);
+
+  const jsonLdCheck = React.useMemo(
+    () => checkJsonLd(editor.schemaJson),
+    [editor.schemaJson]
+  );
 
   const livePreview = React.useMemo(() => {
     const title = editor.title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] || char);
@@ -212,6 +213,15 @@ export function AdminPages() {
 
   const save = async () => {
     if (!editor.title || !editor.slug) return;
+
+    // Checked client-side so the admin gets an instant, specific message; the
+    // API validates independently and is the authority.
+    const jsonLd = checkJsonLd(editor.schemaJson);
+    if (!jsonLd.ok) {
+      setEditor({ ...editor, error: jsonLd.error });
+      return;
+    }
+
     setEditor({ ...editor, saving: true, error: "" });
 
     try {
@@ -680,17 +690,34 @@ export function AdminPages() {
                 }
                 rows={6}
                 spellCheck={false}
-                placeholder={`{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": []
-}`}
+                placeholder={JSON_LD_PLACEHOLDER}
+                aria-invalid={!jsonLdCheck.ok}
                 className="font-mono text-xs leading-relaxed"
               />
-              <p className="text-[11px] text-slate-500">
-                Optional. Valid JSON-LD rendered in a &lt;script&gt; tag on this page for
-                richer search results. Leave empty to remove.
-              </p>
+              {/* Invalid JSON-LD renders as nothing at all, so the page just
+                  silently loses its rich result. Catch it here instead. */}
+              {jsonLdCheck.ok ? (
+                editor.schemaJson.trim() ? (
+                  <p className="text-[11px] font-medium text-emerald-600">
+                    Valid JSON-LD
+                    {jsonLdCheck.empty === false
+                      ? ` · ${jsonLdCheck.count} schema${jsonLdCheck.count === 1 ? "" : "s"}`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-500">
+                    Optional. Valid JSON-LD rendered in a &lt;script&gt; tag on
+                    this page for richer search results. Leave empty to remove.
+                  </p>
+                )
+              ) : (
+                <p
+                  role="alert"
+                  className="text-[11px] font-medium text-rose-600"
+                >
+                  {jsonLdCheck.error}
+                </p>
+              )}
             </div>
           </div>
           <aside className="space-y-2 lg:sticky lg:top-0 lg:self-start">
@@ -703,12 +730,12 @@ export function AdminPages() {
               )}
             </div>
             {editor.renderMode === "document" ? (
-              <iframe
-                title="Live page preview"
-                srcDoc={documentPreview ?? ""}
-                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
-                className="h-[32rem] w-full rounded-xl border bg-white"
-              />
+              <div className="max-h-[32rem] w-full overflow-y-auto rounded-xl border bg-white">
+                <DocumentPage
+                  content={documentPreview ?? ""}
+                  title={editor.title || "Page preview"}
+                />
+              </div>
             ) : (
               <iframe
                 title="Live page preview"
@@ -739,7 +766,8 @@ export function AdminPages() {
                 editor.saving ||
                 !editor.title ||
                 !editor.slug ||
-                editor.content.length > MAX_PAGE_CONTENT_CHARS
+                editor.content.length > MAX_PAGE_CONTENT_CHARS ||
+                !jsonLdCheck.ok
               }
               className="bg-brand-600 hover:bg-brand-700 text-white"
             >

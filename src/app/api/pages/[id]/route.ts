@@ -3,6 +3,12 @@ import { db } from "@/lib/db";
 import { isResponse, requirePermission, logActivity } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { MAX_PAGE_CONTENT_CHARS, normalizeRenderMode } from "@/lib/shortcodes";
+import { checkJsonLd } from "@/lib/jsonld";
+import {
+  findPageById,
+  findPageBySlug,
+  isMissingRenderMode,
+} from "@/lib/page-queries";
 
 function revalidatePage(slug: string) {
   revalidatePath("/");
@@ -26,14 +32,8 @@ export async function GET(
     const { id } = await params;
     const { slug, rowId } = resolveKey(id);
     const page = slug
-      ? await db.page.findUnique({
-          where: { slug },
-          include: { children: true },
-        })
-      : await db.page.findUnique({
-          where: { id: rowId },
-          include: { children: true },
-        });
+      ? await findPageBySlug(slug, { children: true })
+      : await findPageById(rowId as string, { children: true });
     if (!page) {
       return NextResponse.json({ error: "Page not found" }, { status: 404 });
     }
@@ -66,6 +66,10 @@ export async function PATCH(
     if (body.parentId !== undefined) data.parentId = body.parentId || null;
     if (body.order !== undefined) data.order = body.order;
     if (body.schemaJson !== undefined) {
+      const jsonLd = checkJsonLd(body.schemaJson);
+      if (!jsonLd.ok) {
+        return NextResponse.json({ error: jsonLd.error }, { status: 400 });
+      }
       const s = String(body.schemaJson ?? "").trim();
       data.schemaJson = s || null;
     }
@@ -134,6 +138,17 @@ export async function PATCH(
     });
     return NextResponse.json({ page });
   } catch (e) {
+    // Writes cannot degrade the way reads can: Prisma's UPDATE always returns
+    // the full row, so a database missing renderMode rejects every update.
+    if (isMissingRenderMode(e)) {
+      return NextResponse.json(
+        {
+          error:
+            "This database is missing the Page.renderMode column, so pages cannot be updated yet. Apply the pending schema migration and retry.",
+        },
+        { status: 503 }
+      );
+    }
     console.error("PATCH /api/pages/[id] error", e);
     return NextResponse.json(
       { error: "Failed to update page" },

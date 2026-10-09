@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageShell } from "@/components/site/page-shell";
-import { db } from "@/lib/db";
+import { findPage } from "@/lib/page-queries";
 import { CmsPageBody } from "@/components/site/cms-page";
 
 export const revalidate = 120;
@@ -17,9 +17,9 @@ type DBPage = {
 
 async function getPublishedPage(slug: string): Promise<DBPage | null> {
   try {
-    const page = await db.page.findFirst({
-      where: { slug, status: "published" },
-    });
+    // Tolerant read: a whole-row select fails on a database that has not yet
+    // received the renderMode column, which would 404 every custom page.
+    const page = await findPage({ where: { slug, status: "published" } });
     return page ?? null;
   } catch {
     return null;

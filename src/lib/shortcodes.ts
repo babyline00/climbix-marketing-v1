@@ -201,9 +201,22 @@ export function isCompleteDocument(html: string): boolean {
 // Generated markup
 // ─────────────────────────────────────────────────────────────
 
-/** Base styles for shortcode-generated components. Injected first so author
- *  CSS in the same <head> overrides it by cascade order. */
+/**
+ * Base styles for shortcode-generated components.
+ *
+ * Every rule is nested inside a native CSS @scope block rooted at
+ * .sc-doc-page. Document mode renders inline (so React-backed shortcodes can
+ * use the site's Tailwind build and Radix portals), which means author CSS is
+ * no longer confined to a frame — scoping is what keeps a landing page's
+ * stylesheet from restyling the site header and footer.
+ *
+ * @scope is supported in Chrome/Edge 118+, Safari 17.4+ and Firefox 128+.
+ * Where it is unsupported the whole block is dropped and these base styles
+ * simply do not apply; the generated markup still reads correctly because it
+ * carries its own layout classes.
+ */
 const SHORTCODE_CSS = `
+@scope (.sc-doc-page) {
 .sc-form{max-width:38rem;font-family:inherit}
 .sc-form h3{margin:0 0 .75rem;font-size:1.25rem;font-weight:700;line-height:1.25}
 .sc-field{display:block;margin-bottom:.75rem}
@@ -233,6 +246,7 @@ const SHORTCODE_CSS = `
 .sc-file-name{font-weight:600;font-size:.9375rem}
 .sc-file-meta{font-size:.8125rem;opacity:.7}
 .sc-hint{font-size:.8125rem;opacity:.7;margin-top:.5rem}
+}
 `;
 
 function humanSize(bytes: number | null | undefined): string {
@@ -400,6 +414,44 @@ function chatHtml(attrs: Attrs, ctx: ShortcodeContext): string {
   return `<button type="button" class="sc-btn sc-btn--primary" data-sc-chat>${escapeHtml(label)}</button>`;
 }
 
+/**
+ * Shortcodes that render as real React components rather than static markup.
+ *
+ * These cannot be plain HTML: they rely on React state, Tailwind utilities and
+ * Radix portals (the growth plan's budget dropdown renders into document.body).
+ * They expand to a placeholder element carrying its configuration in data
+ * attributes, and the page renderer mounts the matching component into it.
+ */
+export const REACT_SHORTCODE_TAGS = ["growth_plan"] as const;
+export type ReactShortcodeTag = (typeof REACT_SHORTCODE_TAGS)[number];
+
+const REACT_SHORTCODE_SET: ReadonlySet<string> = new Set(REACT_SHORTCODE_TAGS);
+
+/** True when `html` contains at least one React-backed shortcode. */
+export function hasReactShortcode(html: string): boolean {
+  if (!html) return false;
+  TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = TAG_RE.exec(html)) !== null) {
+    if (match[1] !== undefined) continue; // [[escaped]]
+    if (match[2] && REACT_SHORTCODE_SET.has(match[2].toLowerCase())) return true;
+  }
+  return false;
+}
+
+/** Placeholder element that the renderer swaps for a real component. */
+function reactShortcodeHtml(name: string, attrs: Attrs): string {
+  const props: Record<string, string> = { "data-sc-react": name };
+  // Options ride along as data attributes so the placeholder stays inert HTML.
+  for (const [key, value] of Object.entries(attrs)) {
+    props[`data-sc-${key.toLowerCase()}`] = value;
+  }
+  const serialized = Object.entries(props)
+    .map(([key, value]) => `${key}="${escapeHtml(value)}"`)
+    .join(" ");
+  return `<div ${serialized}></div>`;
+}
+
 function contactHtml(kind: "email" | "phone", attrs: Attrs, ctx: ShortcodeContext): string {
   if (kind === "email") {
     const address = attrs.address || ctx.email;
@@ -428,6 +480,10 @@ export function expandShortcodes(
 
     const name = rawName.toLowerCase();
     const attrs = parseAttrs(rawAttrs || "");
+
+    if (REACT_SHORTCODE_SET.has(name)) {
+      return reactShortcodeHtml(name, attrs);
+    }
 
     switch (name) {
       case "lead_form":
@@ -466,14 +522,16 @@ export function expandShortcodes(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Behaviour for shortcode-generated forms, the chat bridge, and height
- * reporting to the parent frame. Written as a string so it ships inside the
- * document itself — it has to run in the frame, not in the host page.
+ * Behaviour for shortcode-generated forms and the chat bridge. Written as a
+ * string so it can be injected into the host document and run there, alongside
+ * the markup it operates on.
+ *
+ * Document mode renders inline rather than in a frame, so there is no height
+ * bridge: the page grows normally as content loads.
  */
-function runtimeScript(token: string): string {
-  return `<script data-climbix-runtime>
+function runtimeScript(): string {
+  return `
 (function(){
-  var TOKEN = ${JSON.stringify(token)};
 
   function setStatus(form, message, kind){
     var el = form.querySelector('.sc-status');
@@ -518,7 +576,6 @@ function runtimeScript(token: string): string {
           ? 'Thanks — we already have your details and will be in touch.'
           : 'Thank you. We will be in touch shortly.', 'ok');
         form.reset();
-        report();
         return;
       }
       var message = (result.body && result.body.error) ||
@@ -542,98 +599,87 @@ function runtimeScript(token: string): string {
     var target = event.target && event.target.closest ? event.target.closest('[data-sc-chat]') : null;
     if (!target) return;
     event.preventDefault();
-    try {
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'climbix:open-chat' }, '*');
-      }
-    } catch (err) { /* parent is gone; nothing to do */ }
+    // The assistant widget listens for this on the same window now that
+    // document mode renders inline.
+    window.dispatchEvent(new CustomEvent('climbix:open-chat'));
   });
 
-  function report(){
-    try {
-      var height = Math.max(
-        document.documentElement.scrollHeight,
-        document.body ? document.body.scrollHeight : 0
-      );
-      window.parent.postMessage({ type: 'climbix:height', token: TOKEN, height: height }, '*');
-    } catch (err) { /* cross-origin parent */ }
-  }
-
-  if (window.parent && window.parent !== window) {
-    window.addEventListener('load', report);
-    window.addEventListener('resize', report);
-    if (window.ResizeObserver) {
-      try {
-        new ResizeObserver(report).observe(document.documentElement);
-      } catch (err) { /* not observable */ }
-    }
-    // MutationObserver catches late layout shifts (images decoding, fonts).
-    if (window.MutationObserver) {
-      new MutationObserver(report).observe(document.documentElement, {
-        childList: true, subtree: true, attributes: true, characterData: true
-      });
-    }
-    setTimeout(report, 60);
-    setTimeout(report, 400);
-  }
 })();
-</script>`;
+`;
 }
 
-
+export type AuthorAssets = {
+  /** Markup destined for the page body. */
+  html: string;
+  /** Contents of author <style> blocks, in source order. */
+  styles: string[];
+  /** Bodies of author <script> blocks, in source order. */
+  scripts: string[];
+  /** Author <title>, when present. */
+  title: string | null;
+  /** Author <meta> tags, preserved so og:/description survive. */
+  metas: string[];
+};
 
 /**
- * Wrap author HTML into a complete document and inject the shortcode runtime.
+ * Split a complete HTML file into the pieces the page renderer needs.
  *
- * Shortcode CSS goes first inside <head> so anything the author writes in the
- * same head wins on cascade order. The runtime <script> goes last so it can see
- * every generated form.
+ * Document mode renders inline rather than in a frame, because React-backed
+ * shortcodes (the growth plan form) need the site's Tailwind build, React
+ * runtime and Radix portals — none of which exist inside a srcDoc frame. An
+ * earlier iframe version worked for static markup but could never host a real
+ * component, and the Radix budget dropdown would have rendered outside the
+ * frame entirely.
+ *
+ * Inlining costs CSS isolation, so author <style> blocks are returned for the
+ * renderer to inject rather than left inline where cascade order would be
+ * unpredictable. <script> bodies are returned for the same reason: script tags
+ * inserted via innerHTML never execute.
  */
-export function buildDocument(options: {
-  html: string;
-  title: string;
-  token: string;
-}): string {
-  const { html, title, token } = options;
-  const script = runtimeScript(token);
+export function extractAuthorAssets(source: string): AuthorAssets {
+  const input = source ?? "";
+  const styles: string[] = [];
+  const scripts: string[] = [];
+  const metas: string[] = [];
+  let title: string | null = null;
 
-  const openTags = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`;
-  let doc = html ?? "";
+  let html = input
+    .replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (_all, body: string) => {
+      if (body.trim()) styles.push(body);
+      return "";
+    })
+    .replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, (_all, body: string) => {
+      if (body.trim()) scripts.push(body);
+      return "";
+    })
+    .replace(/<title\b[^>]*>([\s\S]*?)<\/title>/gi, (_all, body: string) => {
+      if (!title) title = body.trim();
+      return "";
+    })
+    .replace(/<meta\b[^>]*>/gi, (tag: string) => {
+      // Only carry metadata that describes the page; viewport/charset are the
+      // host document's business and would duplicate.
+      if (/<meta[^>]+(?:name|property)\s*=/i.test(tag)) metas.push(tag);
+      return "";
+    })
+    .replace(/<!doctype\s+html>/gi, "")
+    .replace(/<html\b[^>]*>/gi, "")
+    .replace(/<\/html\s*>/gi, "")
+    .replace(/<head\b[^>]*>/gi, "")
+    .replace(/<\/head\s*>/gi, "")
+    .replace(/<body\b[^>]*>/gi, "")
+    .replace(/<\/body\s*>/gi, "");
 
-  if (!isCompleteDocument(doc)) {
-    // A fragment gets a full wrapper. Its own <head> is the only place our
-    // styles can live, so the title is included here.
-    doc = `<!doctype html><html lang="en"><head>${openTags}<title>${escapeHtml(title)}</title><style>${SHORTCODE_CSS}</style></head><body>${doc}</body></html>`;
-    return attachRuntime(doc, script);
-  }
-
-  // Author wrote a real document, so their <title> wins. Only supply one when
-  // they did not — a second <title> would be ignored by the browser anyway,
-  // but leaving a duplicate in the served HTML is just noise.
-  const hasTitle = /<title[^>]*>/i.test(doc);
-  const head =
-    openTags +
-    (hasTitle ? "" : `<title>${escapeHtml(title)}</title>`) +
-    `<style>${SHORTCODE_CSS}</style>`;
-
-  if (/<head[^>]*>/i.test(doc)) {
-    doc = doc.replace(/<head[^>]*>/i, (match) => `${match}${head}`);
-  } else if (/<html[^>]*>/i.test(doc)) {
-    doc = doc.replace(/<html[^>]*>/i, (match) => `${match}<head>${head}</head>`);
-  }
-
-  return attachRuntime(doc, script);
+  return { html: html.trim(), styles, scripts, title, metas };
 }
 
-/** Inject the runtime script as late as possible so it sees every form. */
-function attachRuntime(doc: string, script: string): string {
-  if (/<\/body>/i.test(doc)) {
-    return doc.replace(/<\/body>/i, `${script}</body>`);
-  }
-  if (/<\/html>/i.test(doc)) {
-    return doc.replace(/<\/html>/i, `${script}</body></html>`);
-  }
-  return `${doc}${script}`;
+/**
+ * Shortcode base styles plus the form/chat runtime, as a single style and
+ * script pair for the host document. Scoped to .sc-doc-page so the generated
+ * components cannot restyle the site chrome.
+ */
+export function shortcodeAssets(): { css: string; js: string } {
+  return { css: SHORTCODE_CSS, js: runtimeScript() };
 }
 
 /** Reference shown in the admin editor, also used by the insert buttons. */
@@ -642,6 +688,12 @@ export const SHORTCODE_REFERENCE: {
   summary: string;
   example: string;
 }[] = [
+  {
+    tag: "growth_plan",
+    summary:
+      "Three-step Growth Plan form (services, details, goals). The full interactive component.",
+    example: '[growth_plan variant="hero" source="page-landing"]',
+  },
   {
     tag: "lead_form",
     summary: "Lead capture form. Posts to the CRM with scoring and alerts.",

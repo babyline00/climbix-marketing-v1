@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { db } from "@/lib/db";
-import { HtmlPageFrame } from "@/components/site/html-page";
+import { findPage } from "@/lib/page-queries";
+import { DocumentPage } from "@/components/site/document-page";
 import { expandShortcodes } from "@/lib/shortcodes";
 import { loadShortcodeAssets, loadShortcodeContext } from "@/lib/page-assets";
 
@@ -28,7 +28,11 @@ export async function getPageOverride(
   slug: string
 ): Promise<CmsPage | null> {
   try {
-    const page = await db.page.findFirst({
+    // Routed through the tolerant helper: this read selects the whole row, so
+    // on a database without the renderMode column it has to fall back rather
+    // than fail. Failing here is safe but silent — every built-in page would
+    // quietly revert to its code template with no error anywhere.
+    const page = await findPage({
       where: { slug, status: "published" },
     });
     return page ?? null;
@@ -105,8 +109,8 @@ function SectionRenderer({ sections }: { sections: PageSection[] }) {
 
 /**
  * Expand the shortcodes in a complete-HTML page and hand the result to the
- * frame. Asset and site-fact lookups are best-effort, so a failure degrades to
- * the "[not found]" placeholder rather than an error page.
+ * inline document renderer. Asset and site-fact lookups are best-effort, so a
+ * failure degrades to the "[not found]" placeholder rather than an error page.
  */
 async function ExpandedDocument({
   page,
@@ -123,8 +127,8 @@ async function ExpandedDocument({
   if (!context) return null;
 
   return (
-    <HtmlPageFrame
-      html={expandShortcodes(page.content, context, {
+    <DocumentPage
+      content={expandShortcodes(page.content, context, {
         media: assets?.media,
         documents: assets?.documents,
         allDocuments: assets?.allDocuments,

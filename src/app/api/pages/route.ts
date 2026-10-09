@@ -5,6 +5,8 @@ import { can } from "@/lib/rbac";
 import { revalidatePath } from "next/cache";
 import { publicReadCacheHeaders } from "@/lib/cache-headers";
 import { MAX_PAGE_CONTENT_CHARS, normalizeRenderMode } from "@/lib/shortcodes";
+import { listPages, isMissingRenderMode } from "@/lib/page-queries";
+import { checkJsonLd } from "@/lib/jsonld";
 
 // GET /api/pages — public published pages; authenticated content users can see drafts
 export async function GET(req: NextRequest) {
@@ -13,7 +15,7 @@ export async function GET(req: NextRequest) {
     if (session && !can(session.permissions, "content.view")) {
       return NextResponse.json({ error: "You do not have permission to view content" }, { status: 403 });
     }
-    const pages = await db.page.findMany({
+    const pages = await listPages({
       where: session ? undefined : { status: "published" },
       orderBy: [{ order: "asc" }, { createdAt: "desc" }],
       include: { children: { where: session ? undefined : { status: "published" } } },
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest) {
     );
   } catch (e) {
     console.error("GET /api/pages error", e);
+    // listPages already absorbs a missing renderMode column, so reaching here
+    // means a genuine failure rather than an unapplied migration.
     return NextResponse.json({ error: "Failed to fetch pages" }, { status: 500 });
   }
 }
@@ -63,6 +67,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validated up front: a malformed JSON-LD blob still renders, it just
+    // silently drops the page's rich result, so nothing would report it later.
+    const jsonLd = checkJsonLd(schemaJson);
+    if (!jsonLd.ok) {
+      return NextResponse.json({ error: jsonLd.error }, { status: 400 });
+    }
+    const schemaValue =
+      typeof schemaJson === "string" && schemaJson.trim() ? schemaJson.trim() : null;
+
     // Check slug uniqueness
     const existing = await db.page.findUnique({ where: { slug } });
     if (existing) {
@@ -72,19 +85,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const page = await db.page.create({
-      data: {
-        title,
-        slug,
-        content: bodyContent || JSON.stringify([]),
-        status: status || "published",
-        template: template || "standard",
-        renderMode: mode,
-        parentId: parentId || null,
-        order: order ?? 0,
-        schemaJson: schemaJson && String(schemaJson).trim() ? String(schemaJson).trim() : null,
-      },
-    });
+    let page;
+    try {
+      page = await db.page.create({
+        data: {
+          title,
+          slug,
+          content: bodyContent || JSON.stringify([]),
+          status: status || "published",
+          template: template || "standard",
+          renderMode: mode,
+          parentId: parentId || null,
+          order: order ?? 0,
+          schemaJson: schemaValue,
+        },
+      });
+    } catch (error) {
+      // The production database may not have received the renderMode column
+      // yet. Say so plainly instead of surfacing a generic 500.
+      if (isMissingRenderMode(error)) {
+        return NextResponse.json(
+          {
+            error:
+              "This database is missing the Page.renderMode column, so pages cannot be saved yet. Apply the pending schema migration and retry.",
+          },
+          { status: 503 }
+        );
+      }
+      throw error;
+    }
 
     revalidatePath("/");
     revalidatePath(`/${page.slug}`);
