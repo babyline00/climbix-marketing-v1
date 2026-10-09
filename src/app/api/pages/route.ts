@@ -4,6 +4,7 @@ import { getSession, isResponse, requirePermission } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { revalidatePath } from "next/cache";
 import { publicReadCacheHeaders } from "@/lib/cache-headers";
+import { MAX_PAGE_CONTENT_CHARS, normalizeRenderMode } from "@/lib/shortcodes";
 
 // GET /api/pages — public published pages; authenticated content users can see drafts
 export async function GET(req: NextRequest) {
@@ -34,12 +35,31 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { title, slug, content, status, template, parentId, order, schemaJson } = body;
+    const { title, slug, content, status, template, parentId, order, schemaJson, renderMode } = body;
 
     if (!title || !slug) {
       return NextResponse.json(
         { error: "Title and slug are required" },
         { status: 400 }
+      );
+    }
+
+    const mode = normalizeRenderMode(renderMode);
+    if (mode === null) {
+      return NextResponse.json(
+        { error: "Invalid render mode" },
+        { status: 400 }
+      );
+    }
+
+    // A complete HTML page carries its own CSS and JS inline, so this is
+    // capped well above the rich-text case but still far under the 4.5MB
+    // serverless request-body limit.
+    const bodyContent = String(content ?? "");
+    if (bodyContent.length > MAX_PAGE_CONTENT_CHARS) {
+      return NextResponse.json(
+        { error: `Content too large (max ${MAX_PAGE_CONTENT_CHARS.toLocaleString()} characters)` },
+        { status: 413 }
       );
     }
 
@@ -56,9 +76,10 @@ export async function POST(req: NextRequest) {
       data: {
         title,
         slug,
-        content: content || JSON.stringify([]),
+        content: bodyContent || JSON.stringify([]),
         status: status || "published",
         template: template || "standard",
+        renderMode: mode,
         parentId: parentId || null,
         order: order ?? 0,
         schemaJson: schemaJson && String(schemaJson).trim() ? String(schemaJson).trim() : null,

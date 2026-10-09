@@ -122,13 +122,17 @@ model Media {
 
 // Pages — dynamic pages that can be created/edited/deleted
 model Page {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique // URL slug
-  content     String   // JSON string of page sections
-  status      String   @default("published") // published, draft
-  template    String   @default("standard") // standard, landing, about
-  schemaJson  String?  // Schema.org JSON-LD (single JSON string)
+  id       String @id @default(cuid())
+  title    String
+  slug     String @unique // URL slug
+  content  String // inline: JSON sections or HTML fragment. document: a complete HTML file
+  status   String @default("published") // published, draft
+  template String @default("standard") // standard, landing, about
+  // inline = rendered into the page DOM (rich text / HTML fragment, no scripts run).
+  // document = rendered in a sandboxed frame as a full HTML file, with <style>
+  // and <script> working and shortcodes expanded (see src/lib/shortcodes.ts).
+  renderMode String  @default("inline")
+  schemaJson String? // Schema.org JSON-LD (single JSON string)
   parentId    String?  // for sub-pages
   parent      Page?    @relation("PageHierarchy", fields: [parentId], references: [id])
   children    Page[]   @relation("PageHierarchy")

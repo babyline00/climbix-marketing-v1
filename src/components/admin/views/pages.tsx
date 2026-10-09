@@ -19,6 +19,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
+import {
+  buildDocument,
+  expandShortcodes,
+  MAX_PAGE_CONTENT_CHARS,
+  SHORTCODE_REFERENCE,
+} from "@/lib/shortcodes";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -44,12 +50,63 @@ type Page = {
   content: string;
   status: string;
   template: string;
+  renderMode?: string | null;
   schemaJson?: string | null;
   parentId: string | null;
   order: number;
   createdAt: string;
   updatedAt: string;
   isSystem?: boolean;
+};
+
+/** Starter document for a page authored as a complete HTML file. */
+const DOCUMENT_STARTER = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page title</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; color: #172033; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Welcome to My Website</h1>
+    <p>This is a paragraph of text explaining what this page is about.</p>
+    [cta label="Get started" href="/contact"]
+    [lead_form title="Get in touch"]
+  </div>
+</body>
+</html>`;
+
+type EditorState = {
+  open: boolean;
+  page: Page | null;
+  title: string;
+  slug: string;
+  content: string;
+  status: string;
+  template: string;
+  renderMode: "inline" | "document";
+  schemaJson: string;
+  saving: boolean;
+  error: string;
+};
+
+const DEFAULT_STATE: EditorState = {
+  open: false,
+  page: null,
+  title: "",
+  slug: "",
+  content: "<h2>Page heading goes here</h2><p>Start writing your page content...</p>",
+  status: "published",
+  template: "standard",
+  renderMode: "inline",
+  schemaJson: "",
+  saving: false,
+  error: "",
 };
 
 const SYSTEM_PAGES: Page[] = [
@@ -61,31 +118,7 @@ const SYSTEM_PAGES: Page[] = [
   ["locations", "Locations", "locations"], ["free-growth-audit", "Free Growth Audit", "free-growth-audit"],
   ["free-tools", "Free Tools", "free-tools"], ["seo-guides", "SEO Guides", "seo-guides"],
   ["strategy-call", "Strategy Call", "strategy-call"],
-].map(([id, title, slug]) => ({ id: `system-${id}`, title, slug, content: "", status: "published", template: "system", parentId: null, order: 0, createdAt: "", updatedAt: "", isSystem: true }));
-
-type EditorState = {
-  open: boolean;
-  page: Page | null;
-  title: string;
-  slug: string;
-  content: string;
-  status: string;
-  template: string;
-  schemaJson: string;
-  saving: boolean;
-};
-
-const DEFAULT_STATE: EditorState = {
-  open: false,
-  page: null,
-  title: "",
-  slug: "",
-  content: "<h2>Page heading goes here</h2><p>Start writing your page content...</p>",
-  status: "published",
-  template: "standard",
-  schemaJson: "",
-  saving: false,
-};
+].map(([id, title, slug]) => ({ id: `system-${id}`, title, slug, content: "", status: "published", template: "system", renderMode: "inline", parentId: null, order: 0, createdAt: "", updatedAt: "", isSystem: true }));
 
 // Built-in pages have bespoke templates, so their editor starts from generic
 // copy instead of an empty box.
@@ -98,6 +131,32 @@ export function AdminPages() {
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [editor, setEditor] = React.useState<EditorState>(DEFAULT_STATE);
+
+  /**
+   * Preview runs through the same shortcode expander and document builder as
+   * the public renderer, so what an author sees here is what visitors get.
+   * Media lookups are skipped (no server access from the browser) — asset
+   * shortcodes fall back to their visible "[not found]" placeholder, which is
+   * a useful signal rather than a broken image.
+   */
+  const documentPreview = React.useMemo(() => {
+    if (editor.renderMode !== "document") return null;
+    const expanded = expandShortcodes(
+      editor.content,
+      {
+        slug: editor.slug || "preview",
+        pageTitle: editor.title,
+        siteName: editor.title || "Your site",
+        agentEnabled: false,
+      },
+      {}
+    );
+    return buildDocument({
+      html: expanded,
+      title: editor.title || "Page preview",
+      token: "preview",
+    });
+  }, [editor.content, editor.renderMode, editor.title, editor.slug]);
 
   const livePreview = React.useMemo(() => {
     const title = editor.title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] || char);
@@ -131,22 +190,29 @@ export function AdminPages() {
   };
 
   const openEdit = (page: Page) => {
+    const renderMode = page.renderMode === "document" ? "document" : "inline";
     setEditor({
       open: true,
       page,
       title: page.title,
       slug: page.slug,
-      content: page.content || defaultPageContent(page.title),
+      content:
+        page.content ||
+        (renderMode === "document"
+          ? DOCUMENT_STARTER
+          : defaultPageContent(page.title)),
       status: page.status,
       template: page.template,
+      renderMode,
       schemaJson: page.schemaJson || "",
       saving: false,
+      error: "",
     });
   };
 
   const save = async () => {
     if (!editor.title || !editor.slug) return;
-    setEditor({ ...editor, saving: true });
+    setEditor({ ...editor, saving: true, error: "" });
 
     try {
       const body = {
@@ -155,29 +221,39 @@ export function AdminPages() {
         content: editor.content,
         status: editor.status,
         template: editor.template,
+        renderMode: editor.renderMode,
         schemaJson: editor.schemaJson.trim() || null,
       };
 
-      if (editor.page) {
-        await fetch(`/api/pages/${editor.page.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-      } else {
-        await fetch("/api/pages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+      const res = editor.page
+        ? await fetch(`/api/pages/${editor.page.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        : await fetch("/api/pages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+      // The previous version ignored res.ok, so a 400 slug clash or a 413
+      // size rejection closed the dialog and looked like it had saved.
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setEditor((s) => ({
+          ...s,
+          saving: false,
+          error: data?.error || `Save failed (${res.status})`,
+        }));
+        return;
       }
 
       await fetchPages();
       setEditor(DEFAULT_STATE);
     } catch (e) {
       console.error(e);
-    } finally {
-      setEditor((s) => ({ ...s, saving: false }));
+      setEditor((s) => ({ ...s, saving: false, error: "Network error while saving" }));
     }
   };
 
@@ -458,20 +534,139 @@ export function AdminPages() {
               </div>
             </div>
 
-            {/* Content (JSON) */}
+            {/* Render mode */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Content</Label>
-              <RichTextEditor
-                value={editor.content}
-                onChange={(html) =>
-                  setEditor({ ...editor, content: html })
-                }
-                placeholder="Start writing your page content..."
-              />
+              <Label className="text-xs">Render mode</Label>
+              <Select
+                value={editor.renderMode}
+                onValueChange={(v) => {
+                  const next = v as "inline" | "document";
+                  setEditor({
+                    ...editor,
+                    renderMode: next,
+                    content:
+                      next === "document" &&
+                      editor.renderMode !== "document" &&
+                      !editor.content.trim().startsWith("<!DOCTYPE")
+                        ? DOCUMENT_STARTER
+                        : editor.content,
+                  });
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inline">Rich text / inline HTML</SelectItem>
+                  <SelectItem value="document">Complete HTML page</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-[11px] text-slate-500">
-                Use the toolbar to format text, add headings, lists, links, and images.
+                {editor.renderMode === "document"
+                  ? "Paste a full HTML file. Your <style> and <script> run as-is, and shortcodes become working forms, buttons and attachments."
+                  : "Use the toolbar to format text, add headings, lists, links, and images."}
               </p>
             </div>
+
+            {/* Content */}
+            {editor.renderMode === "document" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs">HTML</Label>
+                <Textarea
+                  value={editor.content}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    // Preserve the caret across the controlled re-render.
+                    const el = e.target;
+                    requestAnimationFrame(() => {
+                      if (el === document.activeElement) {
+                        el.selectionStart = el.selectionStart;
+                      }
+                    });
+                    setEditor({ ...editor, content: next });
+                  }}
+                  rows={20}
+                  spellCheck={false}
+                  className="font-mono text-xs leading-relaxed"
+                />
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>
+                    {editor.content.length.toLocaleString()} /{" "}
+                    {MAX_PAGE_CONTENT_CHARS.toLocaleString()} characters
+                  </span>
+                  {editor.content.length > MAX_PAGE_CONTENT_CHARS && (
+                    <span className="font-semibold text-rose-600">
+                      Over the limit — shorten before saving
+                    </span>
+                  )}
+                </div>
+
+                {/* Shortcode reference */}
+                <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Shortcodes
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SHORTCODE_REFERENCE.map((entry) => (
+                      <Button
+                        key={entry.tag}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 font-mono text-[10px]"
+                        title={`${entry.summary}\n\n${entry.example}`}
+                        onClick={() => {
+                          const snippet = entry.example;
+                          setEditor({
+                            ...editor,
+                            content: editor.content + "\n" + snippet,
+                          });
+                        }}
+                      >
+                        [{entry.tag}]
+                      </Button>
+                    ))}
+                  </div>
+                  <ul className="space-y-1 text-[11px] text-slate-600">
+                    {SHORTCODE_REFERENCE.map((entry) => (
+                      <li key={entry.tag}>
+                        <code className="font-mono text-slate-800">
+                          [{entry.tag}]
+                        </code>{" "}
+                        — {entry.summary}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-slate-500">
+                    Type <code className="font-mono">[[lead_form]]</code> to
+                    print a shortcode literally.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Content</Label>
+                <RichTextEditor
+                  value={editor.content}
+                  onChange={(html) =>
+                    setEditor({ ...editor, content: html })
+                  }
+                  placeholder="Start writing your page content..."
+                />
+                <p className="text-[11px] text-slate-500">
+                  Use the toolbar to format text, add headings, lists, links, and images.
+                </p>
+              </div>
+            )}
+
+            {editor.error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"
+              >
+                {editor.error}
+              </p>
+            )}
 
             {/* Schema.org JSON-LD */}
             <div className="space-y-1.5">
@@ -507,13 +702,26 @@ export function AdminPages() {
                 </Button>
               )}
             </div>
-            <iframe
-              title="Live page preview"
-              srcDoc={livePreview}
-              sandbox=""
-              className="h-[32rem] w-full rounded-xl border bg-white"
-            />
-            <p className="text-[11px] text-muted-foreground">Updates as you type. Save to publish the changes to the live page.</p>
+            {editor.renderMode === "document" ? (
+              <iframe
+                title="Live page preview"
+                srcDoc={documentPreview ?? ""}
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+                className="h-[32rem] w-full rounded-xl border bg-white"
+              />
+            ) : (
+              <iframe
+                title="Live page preview"
+                srcDoc={livePreview}
+                sandbox=""
+                className="h-[32rem] w-full rounded-xl border bg-white"
+              />
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              {editor.renderMode === "document"
+                ? "Same renderer as the live page. Image and attachment shortcodes show [not found] here because the browser cannot read the media library — use Open page to see them resolved."
+                : "Updates as you type. Save to publish the changes to the live page."}
+            </p>
           </aside>
           </div>
 
@@ -527,7 +735,12 @@ export function AdminPages() {
             </Button>
             <Button
               onClick={save}
-              disabled={editor.saving || !editor.title || !editor.slug}
+              disabled={
+                editor.saving ||
+                !editor.title ||
+                !editor.slug ||
+                editor.content.length > MAX_PAGE_CONTENT_CHARS
+              }
               className="bg-brand-600 hover:bg-brand-700 text-white"
             >
               {editor.saving ? (

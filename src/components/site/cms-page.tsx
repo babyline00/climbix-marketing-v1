@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
+import { HtmlPageFrame } from "@/components/site/html-page";
+import { expandShortcodes } from "@/lib/shortcodes";
+import { loadShortcodeAssets, loadShortcodeContext } from "@/lib/page-assets";
 
 export type CmsPage = {
   id: string;
@@ -9,6 +12,7 @@ export type CmsPage = {
   content: string;
   status: string;
   template: string;
+  renderMode?: string | null;
   schemaJson?: string | null;
 };
 
@@ -99,11 +103,44 @@ function SectionRenderer({ sections }: { sections: PageSection[] }) {
   );
 }
 
+/**
+ * Expand the shortcodes in a complete-HTML page and hand the result to the
+ * frame. Asset and site-fact lookups are best-effort, so a failure degrades to
+ * the "[not found]" placeholder rather than an error page.
+ */
+async function ExpandedDocument({
+  page,
+}: {
+  page: CmsPage;
+}) {
+  const [assets, context] = await Promise.all([
+    loadShortcodeAssets().catch(() => undefined),
+    loadShortcodeContext({ slug: page.slug, pageTitle: page.title }).catch(
+      () => undefined
+    ),
+  ]);
+
+  if (!context) return null;
+
+  return (
+    <HtmlPageFrame
+      html={expandShortcodes(page.content, context, {
+        media: assets?.media,
+        documents: assets?.documents,
+        allDocuments: assets?.allDocuments,
+      })}
+      title={page.title}
+    />
+  );
+}
+
 /** Renderer for a DB-backed page — used by the catch-all and built-in templates. */
 export async function CmsPageBody({ page }: { page: CmsPage }) {
+  const isDocument = page.renderMode === "document";
+
   const isHTML = page.content.trim().startsWith("<");
   let sections: PageSection[] = [];
-  if (!isHTML) {
+  if (!isHTML && !isDocument) {
     try {
       sections = JSON.parse(page.content) as PageSection[];
     } catch {
@@ -119,6 +156,13 @@ export async function CmsPageBody({ page }: { page: CmsPage }) {
           dangerouslySetInnerHTML={{ __html: page.schemaJson }}
         />
       )}
+      {isDocument ? (
+        // A complete HTML file owns its own head, layout and styling, so it
+        // renders full-bleed with no site hero and no prose wrapper — the
+        // page shell (header/footer) still frames it.
+        <ExpandedDocument page={page} />
+      ) : (
+      <>
       <section className="relative isolate overflow-hidden bg-ink-900 text-white pt-28 lg:pt-36 pb-14">
         <div className="absolute inset-0 hero-grid opacity-60" aria-hidden />
         <div className="absolute inset-0 hero-radial" aria-hidden />
@@ -148,6 +192,8 @@ export async function CmsPageBody({ page }: { page: CmsPage }) {
           )}
         </div>
       </section>
+      </>
+      )}
     </>
   );
 }

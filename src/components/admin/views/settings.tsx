@@ -77,6 +77,8 @@ const FIELDS: Record<
 > = {
   general: [
     { key: "general.appName", label: "Application name" },
+    { key: "general.email", label: "Public contact email", hint: "Used by the [email] shortcode" },
+    { key: "general.phone", label: "Public contact phone", hint: "Used by the [phone] shortcode" },
     { key: "general.timezone", label: "Timezone", hint: "IANA name, e.g. Asia/Karachi" },
     { key: "general.currency", label: "Currency", hint: "ISO code, e.g. USD, PKR" },
     { key: "general.dateFormat", label: "Date format", hint: "e.g. MMM D, YYYY" },

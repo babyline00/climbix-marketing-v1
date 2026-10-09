@@ -11,6 +11,10 @@ import { resolveBrand, DEFAULT_BRAND, type BrandSettings } from "./brand";
 export const SETTING_DEFAULTS: Record<string, string> = {
   // General
   "general.appName": "Climbix Marketing",
+  // Public contact details. Rendered by the [email] / [phone] shortcodes on
+  // custom HTML pages, so leaving them blank is a valid state.
+  "general.email": "hello@climbixmarketing.com",
+  "general.phone": "",
   "general.timezone": "Asia/Karachi",
   "general.currency": "USD",
   "general.dateFormat": "MMM D, YYYY",
@@ -114,6 +118,8 @@ export const VALUE_MAX_LENGTHS: Record<string, number> = {
   "branding.siteName": 40,
   "branding.logoAlt": 120,
   "general.appName": 80,
+  "general.email": 120,
+  "general.phone": 40,
   "agent.welcome": 500,
   "agent.systemPrompt": 4000,
   "agent.provider": 20,

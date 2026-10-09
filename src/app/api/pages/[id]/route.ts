@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isResponse, requirePermission, logActivity } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { MAX_PAGE_CONTENT_CHARS, normalizeRenderMode } from "@/lib/shortcodes";
 
 function revalidatePage(slug: string) {
   revalidatePath("/");
@@ -68,6 +69,23 @@ export async function PATCH(
       const s = String(body.schemaJson ?? "").trim();
       data.schemaJson = s || null;
     }
+    if (body.renderMode !== undefined) {
+      const mode = normalizeRenderMode(body.renderMode);
+      if (mode === null) {
+        return NextResponse.json({ error: "Invalid render mode" }, { status: 400 });
+      }
+      data.renderMode = mode;
+    }
+    if (body.content !== undefined) {
+      const next = String(body.content ?? "");
+      if (next.length > MAX_PAGE_CONTENT_CHARS) {
+        return NextResponse.json(
+          { error: `Content too large (max ${MAX_PAGE_CONTENT_CHARS.toLocaleString()} characters)` },
+          { status: 413 }
+        );
+      }
+      data.content = next;
+    }
 
     let page;
     if (slug) {
@@ -93,6 +111,7 @@ export async function PATCH(
               content: data.content ? String(data.content) : "<p></p>",
               status: String(data.status || "published"),
               template: String(data.template || "standard"),
+              renderMode: String(data.renderMode || "inline"),
               order: typeof data.order === "number" ? data.order : 0,
               schemaJson: data.schemaJson ? String(data.schemaJson) : null,
             } as never,
