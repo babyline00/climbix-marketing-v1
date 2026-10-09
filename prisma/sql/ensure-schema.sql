@@ -1,0 +1,13 @@
+-- Idempotent schema additions that Prisma migrations cannot express here.
+--
+-- This project's prisma/migrations/* are SQLite dialect (DATETIME, REAL) while
+-- the datasource is postgresql, so `prisma migrate deploy` cannot run at all;
+-- production was provisioned with `prisma db push`. Without a working migration
+-- path, a column added to schema.prisma ships in code immediately and only
+-- reaches the database when something applies it — which is how Page.renderMode
+-- shipped in code while production still lacked the column, and took GET
+-- /api/pages down with a P2022 error.
+--
+-- These statements are additive and idempotent, so they are safe to run on
+-- every build. They never drop or alter existing data.
+ALTER TABLE "Page" ADD COLUMN IF NOT EXISTS "renderMode" TEXT NOT NULL DEFAULT 'inline';

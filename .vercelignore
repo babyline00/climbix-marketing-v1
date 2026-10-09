@@ -1,0 +1,26 @@
+# Files the Vercel CLI would otherwise upload into the build container.
+#
+# .env matters most: it was being uploaded, so the build logged "Detected .env
+# file" and the Prisma CLI loaded the LOCAL connection string from it. Anything
+# invoking `prisma` during a build then resolved DATABASE_URL from this file
+# rather than the platform's real value. Vercel already injects the real
+# DATABASE_URL and friends as environment variables, so shipping the local file
+# only adds a leaked dev secret and a wrong default.
+.env
+.env.*
+!.env.example
+
+# Local runtime artefacts — large, and useless to a build.
+db/
+*.db
+*.db-journal
+dev.log
+dev.out.log
+server.log
+*.tsbuildinfo
+
+# Screenshot/reference material that is not part of the site.
+download/
+examples/
+t4.html
+prev.html

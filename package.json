@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3002 2>&1 | tee dev.log",
-    "build": "prisma generate && next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "build": "prisma generate && npm run db:ensure-schema && next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "db:ensure-schema": "sh scripts/ensure-schema.sh || echo \"WARNING: ensure-schema.sh did not run. Check DATABASE_URL on the build environment. Additive columns may be missing; affected screens return 503 until they are applied.\"",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "db:push": "prisma db push --accept-data-loss",
