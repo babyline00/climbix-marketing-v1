@@ -21,11 +21,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { RichTextEditor } from "@/components/admin/rich-text-editor";
 import {
   expandShortcodes,
+  hasReactShortcode,
   MAX_PAGE_CONTENT_CHARS,
   SHORTCODE_REFERENCE,
 } from "@/lib/shortcodes";
 import { checkJsonLd, JSON_LD_PLACEHOLDER } from "@/lib/jsonld";
 import { DocumentPage } from "@/components/site/document-page";
+import { HtmlPageFrame } from "@/components/site/html-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -153,6 +155,14 @@ export function AdminPages() {
       {}
     );
   }, [editor.content, editor.renderMode, editor.title, editor.slug]);
+
+  // Mirrors the dispatch in CmsPageBody so the preview cannot lie about which
+  // renderer the live page will use. Checked against the raw content, since
+  // expansion has already rewritten [growth_plan] into a placeholder element.
+  const previewNeedsReact = React.useMemo(
+    () => hasReactShortcode(editor.content),
+    [editor.content]
+  );
 
   const jsonLdCheck = React.useMemo(
     () => checkJsonLd(editor.schemaJson),
@@ -573,7 +583,9 @@ export function AdminPages() {
               </Select>
               <p className="text-[11px] text-slate-500">
                 {editor.renderMode === "document"
-                  ? "Paste a full HTML file. Your <style> and <script> run as-is, and shortcodes become working forms, buttons and attachments."
+                  ? previewNeedsReact
+                    ? "This page uses an interactive component ([growth_plan]), so it renders inline with the site's styles. Your CSS is scoped to the page and cannot affect the site header or footer."
+                    : "Your file renders in its own frame, so its CSS and JavaScript behave exactly as they do standalone — global resets, fonts and scripts cannot affect the site."
                   : "Use the toolbar to format text, add headings, lists, links, and images."}
               </p>
             </div>
@@ -730,12 +742,20 @@ export function AdminPages() {
               )}
             </div>
             {editor.renderMode === "document" ? (
-              <div className="max-h-[32rem] w-full overflow-y-auto rounded-xl border bg-white">
-                <DocumentPage
-                  content={documentPreview ?? ""}
+              previewNeedsReact ? (
+                <div className="max-h-[32rem] w-full overflow-y-auto rounded-xl border bg-white">
+                  <DocumentPage
+                    content={documentPreview ?? ""}
+                    title={editor.title || "Page preview"}
+                  />
+                </div>
+              ) : (
+                <HtmlPageFrame
+                  html={documentPreview ?? ""}
                   title={editor.title || "Page preview"}
+                  className="h-[32rem] w-full rounded-xl border bg-white"
                 />
-              </div>
+              )
             ) : (
               <iframe
                 title="Live page preview"

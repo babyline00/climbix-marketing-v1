@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { findPage } from "@/lib/page-queries";
 import { DocumentPage } from "@/components/site/document-page";
-import { expandShortcodes } from "@/lib/shortcodes";
+import { HtmlPageFrame } from "@/components/site/html-page";
+import { expandShortcodes, hasReactShortcode } from "@/lib/shortcodes";
 import { loadShortcodeAssets, loadShortcodeContext } from "@/lib/page-assets";
 
 export type CmsPage = {
@@ -108,15 +109,24 @@ function SectionRenderer({ sections }: { sections: PageSection[] }) {
 }
 
 /**
- * Expand the shortcodes in a complete-HTML page and hand the result to the
- * inline document renderer. Asset and site-fact lookups are best-effort, so a
- * failure degrades to the "[not found]" placeholder rather than an error page.
+ * Expand the shortcodes in a complete-HTML page and pick a renderer.
+ *
+ * Two framings, because they solve different problems and neither can do both:
+ *
+ *  - Framed (default). The author's file gets its own document, so global
+ *    resets cannot reach the site chrome and scripts written against
+ *    DOMContentLoaded run normally. This is what makes a pasted standalone HTML
+ *    file behave exactly as it does on its own.
+ *  - Inline. Required when the page uses a React-backed shortcode such as
+ *    [growth_plan]: a frame has no React runtime or Tailwind build, and the
+ *    form's Radix budget dropdown portals to document.body, which would place
+ *    it outside the frame entirely.
+ *
+ * So the choice is made per page from the content. Asset and site-fact lookups
+ * are best-effort, so a failure degrades to the "[not found]" placeholder rather
+ * than an error page.
  */
-async function ExpandedDocument({
-  page,
-}: {
-  page: CmsPage;
-}) {
+async function ExpandedDocument({ page }: { page: CmsPage }) {
   const [assets, context] = await Promise.all([
     loadShortcodeAssets().catch(() => undefined),
     loadShortcodeContext({ slug: page.slug, pageTitle: page.title }).catch(
@@ -126,16 +136,20 @@ async function ExpandedDocument({
 
   if (!context) return null;
 
-  return (
-    <DocumentPage
-      content={expandShortcodes(page.content, context, {
-        media: assets?.media,
-        documents: assets?.documents,
-        allDocuments: assets?.allDocuments,
-      })}
-      title={page.title}
-    />
-  );
+  const expanded = expandShortcodes(page.content, context, {
+    media: assets?.media,
+    documents: assets?.documents,
+    allDocuments: assets?.allDocuments,
+  });
+
+  // Tested against the raw content, not the expanded HTML: expansion has
+  // already replaced [growth_plan] with its placeholder element, so the
+  // shortcode name no longer appears and the check would always be false.
+  if (hasReactShortcode(page.content)) {
+    return <DocumentPage content={expanded} title={page.title} />;
+  }
+
+  return <HtmlPageFrame html={expanded} title={page.title} />;
 }
 
 /** Renderer for a DB-backed page — used by the catch-all and built-in templates. */

@@ -522,16 +522,17 @@ export function expandShortcodes(
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Behaviour for shortcode-generated forms and the chat bridge. Written as a
- * string so it can be injected into the host document and run there, alongside
- * the markup it operates on.
+ * Behaviour for shortcode-generated forms, the chat bridge, and — when the
+ * page is rendered in a frame — height reporting to the host.
  *
- * Document mode renders inline rather than in a frame, so there is no height
- * bridge: the page grows normally as content loads.
+ * Written as a string so it can ship inside the document itself. Both framings
+ * are handled by the same script: inline it dispatches a CustomEvent on this
+ * window, framed it also posts to the parent, which owns the assistant widget.
  */
-function runtimeScript(): string {
+function runtimeScript(token: string): string {
   return `
 (function(){
+  var TOKEN = ${JSON.stringify(token)};
 
   function setStatus(form, message, kind){
     var el = form.querySelector('.sc-status');
@@ -599,11 +600,40 @@ function runtimeScript(): string {
     var target = event.target && event.target.closest ? event.target.closest('[data-sc-chat]') : null;
     if (!target) return;
     event.preventDefault();
-    // The assistant widget listens for this on the same window now that
-    // document mode renders inline.
+    // Inline rendering shares this window, so a CustomEvent is enough.
     window.dispatchEvent(new CustomEvent('climbix:open-chat'));
+    // Framed rendering needs to reach the host page, which owns the widget.
+    if (window.parent && window.parent !== window) {
+      try { window.parent.postMessage({ type: 'climbix:open-chat' }, '*'); } catch (e) {}
+    }
   });
 
+  function reportHeight(){
+    // Only meaningful when framed; inline pages grow with the document anyway.
+    if (!(window.parent && window.parent !== window)) return;
+    try {
+      var height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body ? document.body.scrollHeight : 0
+      );
+      window.parent.postMessage({ type: 'climbix:height', token: TOKEN, height: height }, '*');
+    } catch (e) { /* cross-origin parent */ }
+  }
+
+  if (window.parent && window.parent !== window) {
+    window.addEventListener('load', reportHeight);
+    window.addEventListener('resize', reportHeight);
+    if (window.ResizeObserver) {
+      try { new ResizeObserver(reportHeight).observe(document.documentElement); } catch (e) {}
+    }
+    if (window.MutationObserver) {
+      new MutationObserver(reportHeight).observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, characterData: true
+      });
+    }
+    setTimeout(reportHeight, 60);
+    setTimeout(reportHeight, 400);
+  }
 })();
 `;
 }
@@ -674,12 +704,86 @@ export function extractAuthorAssets(source: string): AuthorAssets {
 }
 
 /**
- * Shortcode base styles plus the form/chat runtime, as a single style and
- * script pair for the host document. Scoped to .sc-doc-page so the generated
- * components cannot restyle the site chrome.
+ * Shortcode base styles plus the form/chat runtime.
+ *
+ * The CSS is wrapped in a native `@scope (.sc-doc-page)` block. That matters
+ * for the inline path, where author and site CSS share one document, and is
+ * harmless in the framed path because the frame's <body> carries the same
+ * class.
  */
-export function shortcodeAssets(): { css: string; js: string } {
-  return { css: SHORTCODE_CSS, js: runtimeScript() };
+export function shortcodeAssets(token = ""): { css: string; js: string } {
+  return { css: SHORTCODE_CSS, js: runtimeScript(token) };
+}
+
+/**
+ * Wrap author HTML into a complete document for the framed renderer.
+ *
+ * This is the path that makes a pasted standalone HTML file behave exactly as
+ * it does on its own: its <style> applies only inside the frame, its global
+ * resets cannot reach the site header and footer, and its scripts get a real
+ * document with DOMContentLoaded and window intact.
+ *
+ * Author CSS is injected first so anything the author writes in the same head
+ * wins on cascade order, and the runtime script goes last so it can see every
+ * generated form.
+ */
+export function buildDocument(options: {
+  html: string;
+  title: string;
+  token: string;
+}): string {
+  const { html, title, token } = options;
+  const script = runtimeScript(token);
+  const base = shortcodeAssets(token).css;
+
+  // The scope root the shortcode CSS is written against.
+  const openTags =
+    `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`;
+  let doc = html ?? "";
+
+  if (!isCompleteDocument(doc)) {
+    // A fragment gets a full wrapper. Its own <head> is the only place the
+    // shortcode styles can live, so the title is included here.
+    doc = `<!doctype html><html lang="en"><head>${openTags}<title>${escapeHtml(title)}</title><style>${base}</style></head><body class="sc-doc-page">${doc}</body></html>`;
+    return attachRuntime(doc, script);
+  }
+
+  // Author wrote a real document, so their <title> wins. Only supply one when
+  // they did not — a second <title> is ignored by the browser anyway.
+  const hasTitle = /<title[^>]*>/i.test(doc);
+  const head =
+    openTags +
+    (hasTitle ? "" : `<title>${escapeHtml(title)}</title>`) +
+    `<style>${base}</style>`;
+
+  if (/<head[^>]*>/i.test(doc)) {
+    doc = doc.replace(/<head[^>]*>/i, (match) => `${match}${head}`);
+  } else if (/<html[^>]*>/i.test(doc)) {
+    doc = doc.replace(/<html[^>]*>/i, (match) => `${match}<head>${head}</head>`);
+  }
+
+  // Tag the body so the scoped shortcode CSS still matches.
+  if (/<body[^>]*>/i.test(doc)) {
+    doc = doc.replace(/<body([^>]*)>/i, (match, attrs: string) =>
+      /class\s*=/i.test(attrs) ? match : `${match.slice(0, 5)} class="sc-doc-page"${attrs}>`
+    );
+  } else {
+    doc = doc.replace(/<\/body\s*>/i, `<body class="sc-doc-page"></body>`);
+  }
+
+  return attachRuntime(doc, script);
+}
+
+/** Inject the runtime script as late as possible so it sees every form. */
+function attachRuntime(doc: string, script: string): string {
+  const tag = `<script data-climbix-runtime>${script}</script>`;
+  if (/<\/body>/i.test(doc)) {
+    return doc.replace(/<\/body>/i, `${tag}</body>`);
+  }
+  if (/<\/html>/i.test(doc)) {
+    return doc.replace(/<\/html>/i, `${tag}</body></html>`);
+  }
+  return `${doc}${tag}`;
 }
 
 /** Reference shown in the admin editor, also used by the insert buttons. */
