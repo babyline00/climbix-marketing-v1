@@ -33,11 +33,21 @@ export type PageRenderMode = (typeof PAGE_RENDER_MODES)[number];
 export const DEFAULT_RENDER_MODE: PageRenderMode = "inline";
 
 /**
- * Character ceiling for stored page content. A complete landing page carries
- * its own CSS and JS inline, so this is much larger than the rich-text case,
- * but still well under Vercel's 4.5 MB request-body cap.
+ * Character ceiling for stored page content.
+ *
+ * A complete landing page carries its own CSS and JS inline, so this has to be
+ * far larger than the rich-text case. The previous 200,000 was not merely
+ * tight — it exceeded what the column could hold. Page.content was TEXT
+ * (65,535 bytes) while the app accepted 200,000 characters, and the host runs
+ * without STRICT_TRANS_TABLES, so anything over 64 KB was silently truncated:
+ * the page saved, no error, and the tail of the file was simply gone.
+ *
+ * The column is now LONGTEXT (4 GB) and this ceiling sits well above any page
+ * an author will actually write, so the limit stops being a factor. Raising it
+ * is safe because the check is a cheap in-memory length comparison issued
+ * before any query.
  */
-export const MAX_PAGE_CONTENT_CHARS = 200_000;
+export const MAX_PAGE_CONTENT_CHARS = 100_000_000;
 
 /** Coerce an incoming render mode, or null when it is not one we accept. */
 export function normalizeRenderMode(value: unknown): PageRenderMode | null {

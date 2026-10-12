@@ -124,14 +124,14 @@ model Page {
   id       String @id @default(cuid())
   title    String @db.Text
   slug     String @unique // URL slug
-  content  String @db.Text // inline: JSON sections or HTML fragment. document: a complete HTML file
+  content  String @db.LongText // inline: JSON sections or HTML fragment. document: a complete HTML file
   status   String @db.Text @default("published") // published, draft
   template String @db.Text @default("standard") // standard, landing, about
   // inline = rendered into the page DOM (rich text / HTML fragment, no scripts run).
   // document = rendered in a sandboxed frame as a full HTML file, with <style>
   // and <script> working and shortcodes expanded (see src/lib/shortcodes.ts).
   renderMode String @db.Text  @default("inline")
-  schemaJson String? @db.Text // Schema.org JSON-LD (single JSON string)
+  schemaJson String? @db.LongText // Schema.org JSON-LD (single JSON string)
   parentId    String?  // for sub-pages
   parent      Page?    @relation("PageHierarchy", fields: [parentId], references: [id])
   children    Page[]   @relation("PageHierarchy")
