@@ -12,7 +12,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_ROWS = 1000;
 
 /** RFC-4180-ish CSV line parser — handles quoted fields with commas/escapes */
-export function parseCsvLine(line: string): string[] {
+function parseCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
