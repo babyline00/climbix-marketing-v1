@@ -6,42 +6,41 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider  = "mysql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model Lead {
   id              String      @id @default(cuid())
-  name            String?
+  name            String? @db.Text
   email           String   @unique
-  company         String?
-  website         String?
-  phone           String?
-  whatsapp        String?
-  country         String?
-  city            String?
-  service         String?
-  goal            String?
-  message         String?
-  source          String?     // homepage-cta, service-cta, free-audit, etc.
-  campaign        String?
-  utmSource       String?
-  utmMedium       String?
-  utmCampaign     String?
-  utmTerm         String?
-  utmContent      String?
-  tags            String?     // comma-separated
+  company         String? @db.Text
+  website         String? @db.Text
+  phone           String? @db.Text
+  whatsapp        String? @db.Text
+  country         String? @db.Text
+  city            String? @db.Text
+  service         String? @db.Text
+  goal            String? @db.Text
+  message         String? @db.Text
+  source          String? @db.Text // homepage-cta, service-cta, free-audit, etc.
+  campaign        String? @db.Text
+  utmSource       String? @db.Text
+  utmMedium       String? @db.Text
+  utmCampaign     String? @db.Text
+  utmTerm         String? @db.Text
+  utmContent      String? @db.Text
+  tags            String? @db.Text // comma-separated
   estimatedValue  Float?
   expectedCloseAt DateTime?
   assignedTo      String?     // staff display name / email
   auditScore      Int?
-  auditData       String?     // JSON string of full audit results
+  auditData       String? @db.Text // JSON string of full audit results
   leadScore       Int?         // auto-calculated qualification score (0-100)
-  leadTier        String?      // auto-calculated: HOT, WARM, COLD
+  leadTier        String? @db.Text // auto-calculated: HOT, WARM, COLD
   status          LeadStatus  @default(NEW)
   action          LeadAction? // current action label
-  actionNote      String?
+  actionNote      String? @db.Text
   actionAt        DateTime?
   clientId        String?
   client          Client?     @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -82,15 +81,15 @@ model Meeting {
   id          String   @id @default(cuid())
   leadId      String
   lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  name        String
-  email       String
-  company     String?
-  service     String?
-  date        String   // ISO date string (yyyy-MM-dd)
-  time        String   // HH:mm
-  timezone    String   @default("UTC")
-  notes       String?
-  status      String   @default("scheduled") // scheduled, completed, cancelled
+  name        String @db.Text
+  email       String @db.Text
+  company     String? @db.Text
+  service     String? @db.Text
+  date        String @db.Text // ISO date string (yyyy-MM-dd)
+  time        String @db.Text // HH:mm
+  timezone    String @db.Text   @default("UTC")
+  notes       String? @db.Text
+  status      String @db.Text   @default("scheduled") // scheduled, completed, cancelled
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -98,21 +97,21 @@ model Meeting {
 // Site content stored as key-value pairs for the admin content editor
 model SiteContent {
   key       String   @id // e.g. "hero.headline", "contact.email"
-  value     String
+  value     String @db.Text
   updatedAt DateTime @updatedAt
 }
 
 // Media library — uploaded images and videos
 model Media {
   id         String   @id @default(cuid())
-  filename   String   // original filename
-  storedName String   // unique stored filename
-  url        String   // /uploads/<storedName>
-  mimeType   String   // image/png, video/mp4, etc.
+  filename   String @db.Text // original filename
+  storedName String @db.Text // unique stored filename
+  url        String @db.Text // /uploads/<storedName>
+  mimeType   String @db.Text // image/png, video/mp4, etc.
   size       Int      // bytes
-  altText    String?
-  title      String?
-  type       String   // "image" | "video" | "document"
+  altText    String? @db.Text
+  title      String? @db.Text
+  type       String @db.Text // "image" | "video" | "document"
   createdAt  DateTime @default(now())
 
   // The media library lists every row newest-first with no take, so this sort
@@ -123,16 +122,16 @@ model Media {
 // Pages — dynamic pages that can be created/edited/deleted
 model Page {
   id       String @id @default(cuid())
-  title    String
+  title    String @db.Text
   slug     String @unique // URL slug
-  content  String // inline: JSON sections or HTML fragment. document: a complete HTML file
-  status   String @default("published") // published, draft
-  template String @default("standard") // standard, landing, about
+  content  String @db.Text // inline: JSON sections or HTML fragment. document: a complete HTML file
+  status   String @db.Text @default("published") // published, draft
+  template String @db.Text @default("standard") // standard, landing, about
   // inline = rendered into the page DOM (rich text / HTML fragment, no scripts run).
   // document = rendered in a sandboxed frame as a full HTML file, with <style>
   // and <script> working and shortcodes expanded (see src/lib/shortcodes.ts).
-  renderMode String  @default("inline")
-  schemaJson String? // Schema.org JSON-LD (single JSON string)
+  renderMode String @db.Text  @default("inline")
+  schemaJson String? @db.Text // Schema.org JSON-LD (single JSON string)
   parentId    String?  // for sub-pages
   parent      Page?    @relation("PageHierarchy", fields: [parentId], references: [id])
   children    Page[]   @relation("PageHierarchy")
@@ -145,7 +144,7 @@ model Page {
 model Redirect {
   id          String   @id @default(cuid())
   source      String   @unique // source path e.g. /old-page or /old-page?x=1
-  destination String   // target URL (absolute or path)
+  destination String @db.Text // target URL (absolute or path)
   statusCode  Int      @default(301) // 301 permanent, 302 temporary
   enabled     Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -155,14 +154,14 @@ model Redirect {
 // Blog posts — dynamic blog articles
 model BlogPost {
   id          String    @id @default(cuid())
-  title       String
+  title       String @db.Text
   slug        String    @unique
-  excerpt     String
-  content     String    // JSON string of article sections
-  category    String?
-  tags        String?   // comma-separated
+  excerpt     String @db.Text
+  content     String @db.Text // JSON string of article sections
+  category    String? @db.Text
+  tags        String? @db.Text // comma-separated
   author      String    @default("Climbix Team")
-  heroImage   String?   // media URL or gradient class
+  heroImage   String? @db.Text // media URL or gradient class
   readTime    String    @default("5 min read")
   status      String    @default("published") // published, draft
   featured    Boolean   @default(false)
@@ -179,9 +178,9 @@ model BlogPost {
 // Categories — for blog posts and pages
 model Category {
   id        String     @id @default(cuid())
-  name      String
+  name      String @db.Text
   slug      String     @unique
-  type      String     @default("blog") // blog, page, industry, service
+  type      String @db.Text     @default("blog") // blog, page, industry, service
   parentId  String?    // for subcategories
   parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryHierarchy")
@@ -193,12 +192,12 @@ model Category {
 // Email log — stores all emails sent by the system
 model EmailLog {
   id        String   @id @default(cuid())
-  to        String   // recipient email
-  from      String   @default("noreply@climbixmarketing.com")
-  subject   String
-  body      String   // HTML body
-  type      String   // meeting_confirmation, lead_notification, etc.
-  status    String   @default("sent") // sent, failed
+  to        String @db.Text // recipient email
+  from      String @db.Text   @default("noreply@climbixmarketing.com")
+  subject   String @db.Text
+  body      String @db.Text // HTML body
+  type      String @db.Text // meeting_confirmation, lead_notification, etc.
+  status    String @db.Text   @default("sent") // sent, failed
   leadId    String?
   createdAt DateTime @default(now())
 }
@@ -210,9 +209,9 @@ model EmailLog {
 // Trust badges — small credibility strip items (e.g. "Google Partner")
 model TrustBadge {
   id        String   @id @default(cuid())
-  label     String
-  icon      String   @default("shield-check") // lucide icon key
-  imageUrl  String?  // optional uploaded partner / certification mark
+  label     String @db.Text
+  icon      String @db.Text   @default("shield-check") // lucide icon key
+  imageUrl  String? @db.Text // optional uploaded partner / certification mark
   isActive  Boolean  @default(true)
   position  Int      @default(0)
   createdAt DateTime @default(now())
@@ -224,9 +223,9 @@ model TrustBadge {
 // Client logos — logo marquee / grid on the homepage
 model ClientLogo {
   id        String   @id @default(cuid())
-  name      String
-  imageUrl  String?  // optional logo image URL (from media library)
-  website   String?
+  name      String @db.Text
+  imageUrl  String? @db.Text // optional logo image URL (from media library)
+  website   String? @db.Text
   isActive  Boolean  @default(true)
   position  Int      @default(0)
   createdAt DateTime @default(now())
@@ -238,12 +237,12 @@ model ClientLogo {
 // Client reviews / testimonials
 model Testimonial {
   id        String   @id @default(cuid())
-  name      String
-  role      String?
-  company   String?
-  quote     String
+  name      String @db.Text
+  role      String? @db.Text
+  company   String? @db.Text
+  quote     String @db.Text
   rating    Int      @default(5) // 1-5 stars
-  avatarUrl String?
+  avatarUrl String? @db.Text
   isActive  Boolean  @default(true)
   featured  Boolean  @default(false)
   position  Int      @default(0)
@@ -256,12 +255,12 @@ model Testimonial {
 // Marketing offers / promotions (e.g. "Free SEO Audit — Limited Time")
 model Offer {
   id          String    @id @default(cuid())
-  title       String
-  description String
-  badge       String?   // e.g. "LIMITED TIME", "FREE"
-  imageUrl    String?   // optional uploaded offer artwork
+  title       String @db.Text
+  description String @db.Text
+  badge       String? @db.Text // e.g. "LIMITED TIME", "FREE"
+  imageUrl    String? @db.Text // optional uploaded offer artwork
   ctaLabel    String    @default("Claim Offer")
-  ctaHref     String    @default("#strategy-call")
+  ctaHref     String @db.Text    @default("#strategy-call")
   expiresAt   DateTime? // optional expiry — hidden automatically after this date
   isActive    Boolean   @default(true)
   position    Int       @default(0)
@@ -275,7 +274,7 @@ model Offer {
 model HomePageSection {
   id        String   @id @default(cuid())
   key       String   @unique // hero, trust-badges, services, offers, ...
-  label     String   // admin display name
+  label     String @db.Text // admin display name
   isActive  Boolean  @default(true)
   position  Int      @default(0)
   updatedAt DateTime @updatedAt
@@ -284,7 +283,7 @@ model HomePageSection {
 // Homepage section content — editable text/items per section (JSON blob)
 model SectionContent {
   key       String   @id // matches HomePageSection.key
-  data      String   @default("{}") // JSON string of editable fields
+  data      String @db.Text   @default("{}") // JSON string of editable fields
   updatedAt DateTime @updatedAt
 }
 
@@ -295,15 +294,15 @@ model SectionContent {
 model Service {
   id         String   @id @default(cuid())
   slug       String   @unique // URL slug: /services/<slug>
-  name       String
-  shortName  String
-  tagline    String   @default("")
-  icon       String   @default("search") // lucide icon key (SERVICE_ICONS)
+  name       String @db.Text
+  shortName  String @db.Text
+  tagline    String @db.Text   @default("")
+  icon       String @db.Text   @default("search") // lucide icon key (SERVICE_ICONS)
   accent     String   @default("from-brand-500/20 to-brand-700/10")
-  border     String   @default("border-brand-500/30")
-  cardDesc   String   @default("") // grid card description
-  cardPoints String   @default("[]") // JSON array of grid card bullet strings
-  data       String   @default("{}") // JSON: hero, problem, framework, subServices, process, results, faq, finalCta
+  border     String @db.Text   @default("border-brand-500/30")
+  cardDesc   String @db.Text   @default("") // grid card description
+  cardPoints String @db.Text   @default("[]") // JSON array of grid card bullet strings
+  data       String @db.Text   @default("{}") // JSON: hero, problem, framework, subServices, process, results, faq, finalCta
   isActive   Boolean  @default(true)
   position   Int      @default(0)
   createdAt  DateTime @default(now())
@@ -319,9 +318,9 @@ model Service {
 // Header navigation links — reorder, activate/deactivate, custom entries
 model HeaderLink {
   id        String   @id @default(cuid())
-  label     String   // display label
-  href      String   @default("#") // anchor or external URL (kind "link")
-  kind      String   @default("link") // link | services | industries | blog | pricing
+  label     String @db.Text // display label
+  href      String @db.Text   @default("#") // anchor or external URL (kind "link")
+  kind      String @db.Text   @default("link") // link | services | industries | blog | pricing
   isSystem  Boolean  @default(false) // seeded structural links cannot be deleted
   isActive  Boolean  @default(true)
   position  Int      @default(0)
@@ -335,12 +334,12 @@ model HeaderLink {
 model SitePopup {
   id            String   @id @default(cuid())
   title         String   @default("Special Offer")
-  message       String   @default("")
-  badge         String?  // small pill above the title, e.g. "LIMITED TIME"
-  ctaLabel      String?
-  ctaHref       String?
-  imageUrl      String?
-  customHtml    String?  // rendered in a sandboxed iframe on public pages
+  message       String @db.Text   @default("")
+  badge         String? @db.Text // small pill above the title, e.g. "LIMITED TIME"
+  ctaLabel      String? @db.Text
+  ctaHref       String? @db.Text
+  imageUrl      String? @db.Text
+  customHtml    String? @db.Text // rendered in a sandboxed iframe on public pages
   isActive      Boolean  @default(false)
   delaySeconds  Int      @default(5) // auto-show delay after page load
   showEveryDays Int      @default(1) // per-visitor re-show interval (dismiss memory)
@@ -354,15 +353,15 @@ model SitePopup {
 
 model Workflow {
   id          String   @id @default(cuid())
-  name        String
-  description String?
+  name        String @db.Text
+  description String? @db.Text
   trigger     String   @default("lead.created")
-  nodes       String   @default("[]") // JSON array of visual nodes
-  edges       String   @default("[]") // JSON array of node connections
+  nodes       String @db.Text   @default("[]") // JSON array of visual nodes
+  edges       String @db.Text   @default("[]") // JSON array of node connections
   isActive    Boolean  @default(true)
   version     Int      @default(1)
   lastRunAt   DateTime?
-  createdBy   String?
+  createdBy   String? @db.Text
   webhookSecret String? @unique
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -377,12 +376,12 @@ model WorkflowRun {
   id          String    @id @default(cuid())
   workflowId  String
   workflow    Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  trigger     String
-  triggerId   String?
+  trigger     String @db.Text
+  triggerId   String? @db.Text
   leadId      String?
   status      String    @default("running") // running|completed|failed|skipped
-  logs        String    @default("[]")
-  error       String?
+  logs        String @db.Text    @default("[]")
+  error       String? @db.Text
   startedAt   DateTime  @default(now())
   completedAt DateTime?
 
@@ -399,11 +398,11 @@ model WorkflowRun {
 // Admin panel users — each belongs to a role (Role.name)
 model User {
   id           String    @id @default(cuid())
-  name         String
+  name         String @db.Text
   email        String    @unique
-  passwordHash String    // scrypt hash "salt:hex"
+  passwordHash String @db.Text // scrypt hash "salt:hex"
   role         String    @default("STAFF") // Role.name
-  phone        String?
+  phone        String? @db.Text
   isActive     Boolean   @default(true)
   sessionVersion Int      @default(0)
   lastLoginAt  DateTime?
@@ -418,9 +417,9 @@ model User {
 model Role {
   id          String   @id @default(cuid())
   name        String   @unique // SUPER_ADMIN, ADMIN, SALES_MANAGER, ...
-  label       String
-  description String   @default("")
-  permissions String   @default("[]") // JSON array of permission keys
+  label       String @db.Text
+  description String @db.Text   @default("")
+  permissions String @db.Text   @default("[]") // JSON array of permission keys
   isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -432,10 +431,10 @@ model Role {
 model ActivityLog {
   id        String   @id @default(cuid())
   userId    String?
-  userName  String   @default("system")
-  action    String   // login, login_failed, lead.update, page.create, ...
+  userName  String @db.Text   @default("system")
+  action    String @db.Text // login, login_failed, lead.update, page.create, ...
   module    String   @default("system") // auth, leads, content, homepage, ...
-  details   String   @default("")
+  details   String @db.Text   @default("")
   createdAt DateTime @default(now())
 
   @@index([createdAt])
@@ -451,17 +450,17 @@ model ActivityLog {
 model Client {
   id        String    @id @default(cuid())
   name      String
-  company   String?
-  email     String?
-  phone     String?
-  whatsapp  String?
-  website   String?
-  industry  String?
-  country   String?
-  city      String?
-  address   String?
+  company   String? @db.Text
+  email     String? @db.Text
+  phone     String? @db.Text
+  whatsapp  String? @db.Text
+  website   String? @db.Text
+  industry  String? @db.Text
+  country   String? @db.Text
+  city      String? @db.Text
+  address   String? @db.Text
   status    String    @default("active") // active | inactive | archived
-  notes     String?
+  notes     String? @db.Text
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
@@ -475,21 +474,21 @@ model Client {
 // Projects — client engagements
 model Project {
   id            String    @id @default(cuid())
-  name          String
+  name          String @db.Text
   code          String?   @unique
-  description   String?
+  description   String? @db.Text
   clientId      String?
   client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  managerName   String?   // display name of responsible staff
+  managerName   String? @db.Text // display name of responsible staff
   status        String    @default("planning") // planning|pending|active|on_hold|completed|cancelled|archived
-  priority      String    @default("medium") // low|medium|high|critical
+  priority      String @db.Text    @default("medium") // low|medium|high|critical
   progress      Int       @default(0) // 0-100
   budget        Float?
   actualCost    Float?
   revenue       Float?
   startDate     DateTime?
   deadline      DateTime?
-  notes         String?
+  notes         String? @db.Text
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -504,11 +503,11 @@ model Task {
   id             String    @id @default(cuid())
   projectId      String?
   project        Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  title          String
-  description    String?
-  assigneeName   String?
+  title          String @db.Text
+  description    String? @db.Text
+  assigneeName   String? @db.Text
   status         String    @default("todo") // todo|in_progress|review|completed|cancelled
-  priority       String    @default("medium") // low|medium|high|critical
+  priority       String @db.Text    @default("medium") // low|medium|high|critical
   dueDate        DateTime?
   estimatedHours Float?
   actualHours    Float?
@@ -524,11 +523,11 @@ model FollowUp {
   id          String    @id @default(cuid())
   leadId      String
   lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  staffName   String?
-  type        String    @default("call") // call|whatsapp|email|meeting|sms|other
+  staffName   String? @db.Text
+  type        String @db.Text    @default("call") // call|whatsapp|email|meeting|sms|other
   scheduledAt DateTime
-  notes       String?
-  result      String?
+  notes       String? @db.Text
+  result      String? @db.Text
   nextAt      DateTime?
   done        Boolean   @default(false)
   createdAt   DateTime  @default(now())
@@ -542,10 +541,10 @@ model FollowUp {
 // Notifications — in-app notification center
 model Notification {
   id        String    @id @default(cuid())
-  type      String    @default("system") // lead_new|lead_assigned|lead_converted|followup_due|task|system
-  title     String
-  message   String?
-  href      String?
+  type      String @db.Text    @default("system") // lead_new|lead_assigned|lead_converted|followup_due|task|system
+  title     String @db.Text
+  message   String? @db.Text
+  href      String? @db.Text
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
@@ -556,17 +555,17 @@ model Notification {
 // Documents — file attachments linked to projects, clients, leads or staff
 model Document {
   id          String    @id @default(cuid())
-  name        String
+  name        String @db.Text
   storedName  String    @unique
-  url         String
-  mimeType    String
+  url         String @db.Text
+  mimeType    String @db.Text
   size        Int       // bytes
   category    String    @default("general") // general|contract|proposal|invoice|report|design|other
-  uploadedBy  String    @default("system") // display name of uploading user
+  uploadedBy  String @db.Text    @default("system") // display name of uploading user
   relatedType String?   // project|client|lead|staff
   relatedId   String?
-  relatedName String?   // denormalized label for quick display
-  notes       String?
+  relatedName String? @db.Text // denormalized label for quick display
+  notes       String? @db.Text
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -579,7 +578,7 @@ model Document {
 // Settings — key/value application configuration (general, branding, security, email, seo)
 model Setting {
   key       String   @id // e.g. "general.appName", "security.maxLoginAttempts"
-  value     String   @default("") // JSON or plain string
+  value     String @db.Text   @default("") // JSON or plain string
   updatedAt DateTime @updatedAt
 }
 
@@ -595,3 +594,4 @@ model PasswordReset {
   @@index([userId])
   @@index([token])
 }
+
